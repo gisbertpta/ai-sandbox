@@ -17,6 +17,7 @@ in a separate **project layer** that is plugged into a fixed slot.
 │   ├── docker-compose.yml        generic: sandbox, proxy, networks, generic mounts
 │   ├── initialize.sh             host-side: checks slot + prerequisites, builds images
 │   ├── compose.sh                'docker compose' with all compose files
+│   ├── devcontainer-compose-cheatsheet.md   host commands: start, logs, rebuild, cleanup
 │   ├── protected-paths           paths host tools run by themselves → read-only
 │   ├── base/                     generic image: zsh, vim, git, rg, fd, jq, fzf, uv (no agent)
 │   ├── modules/                  agent CLIs, each with Dockerfile, allowlist, mounts

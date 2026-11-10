@@ -90,6 +90,7 @@ network, so e.g. `uv sync` against a private index works during the build.
 | `tests/sandbox-test.sh` | End-to-end test of masks and read-only protection (see [Testing](#testing)). |
 | `protected-paths` | Paths in every working repo (and the envelope root) that host tools run by themselves; mounted read-only. |
 | `compose.sh` | `docker compose` with all compose files. Use it instead of bare `docker compose`. |
+| `devcontainer-compose-cheatsheet.md` | Host commands at a glance: start, rebuild, logs, config, proxy and cred-gw maintenance, cleanup, troubleshooting. |
 | `base/Dockerfile` | Generic image: Node (LTS), zsh, vim, git, rg, fd, jq, fzf, shellcheck, python3, uv, `dev` user. No agent CLI. Base images pinned by tag + digest. |
 | `base/check-exclusions.sh` | The check. Installed in the image as `/usr/local/bin/check-exclusions`. |
 | `base/run-guarded.sh` | Installed as `run-guarded`. Runs the check, then the given command. Every agent wrapper calls it. |
