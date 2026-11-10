@@ -1,4 +1,5 @@
-FROM debian:bookworm-slim
+# Pinned (tag + digest); .github/dependabot.yml proposes updates
+FROM debian:bookworm-20261104-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 
 RUN apt-get update && apt-get install -y --no-install-recommends squid \
     && rm -rf /var/lib/apt/lists/*

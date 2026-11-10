@@ -90,7 +90,7 @@ network, so e.g. `uv sync` against a private index works during the build.
 | `tests/sandbox-test.sh` | End-to-end test of masks and read-only protection (see [Testing](#testing)). |
 | `protected-paths` | Paths in every working repo (and the envelope root) that host tools run by themselves; mounted read-only. |
 | `compose.sh` | `docker compose` with all compose files. Use it instead of bare `docker compose`. |
-| `base/Dockerfile` | Generic image: Node, zsh, vim, git, rg, fd, jq, fzf, shellcheck, python3, uv, `dev` user. No agent CLI. |
+| `base/Dockerfile` | Generic image: Node (LTS), zsh, vim, git, rg, fd, jq, fzf, shellcheck, python3, uv, `dev` user. No agent CLI. Base images pinned by tag + digest. |
 | `base/check-exclusions.sh` | The check. Installed in the image as `/usr/local/bin/check-exclusions`. |
 | `base/run-guarded.sh` | Installed as `run-guarded`. Runs the check, then the given command. Every agent wrapper calls it. |
 | `base/.zshrc` | Shell config for the `dev` user (vi mode, fzf, autosuggestions, syntax highlighting). |
@@ -376,7 +376,7 @@ request:
 | Job | What |
 |---|---|
 | `lint` | `shellcheck -S warning` on all `*.sh`, strict JSON check (managed settings) |
-| `cred-gw` | The policy unit tests (`modules/cred-gw/gateway/`), in `python:3.11-slim` like the gateway image |
+| `cred-gw` | The policy unit tests (`modules/cred-gw/gateway/`), run in the gateway image itself |
 | `sandbox` | `tests/sandbox-test.sh`: builds the images, starts the devcontainer in a throwaway workspace with fake repos and a project layer, and checks that masks hold, protected paths can't be changed or renamed away, normal git work still works, the next start warns about new paths, and with the `cred-gw` module: host names reach the gateway, TLS verifies, the policy applies, the tokens stay out of the devcontainer |
 
 Run the end-to-end test on the host after changing `initialize.sh`, the compose
