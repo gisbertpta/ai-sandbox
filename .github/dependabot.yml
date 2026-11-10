@@ -1,5 +1,6 @@
-# Pinned images and actions: Dependabot opens a PR when a newer version is out,
-# and CI (ci.yml, incl. the sandbox test) checks it before you merge.
+# Pinned images and actions: Dependabot opens a PR when a newer minor/patch
+# version is out (major versions stay manual), and CI (ci.yml, incl. the
+# sandbox test) checks it before you merge.
 # Not covered: the shellcheck image in ci.yml (update by hand).
 version: 2
 updates:
@@ -25,3 +26,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Major versions (e.g. actions/checkout v4 → v7) are decisions, not routine
+    # updates: check the release notes and upgrade by hand
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
