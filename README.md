@@ -24,9 +24,11 @@ in a separate **project layer** that is plugged into a fixed slot.
 │   │   ├── copilot/              GitHub Copilot CLI
 │   │   └── ntfy/                 opt-in: Stop-hook notification via ntfy.sh
 │   ├── proxy/                    squid egress proxy + generic allowlist
+│   ├── tests/                    end-to-end sandbox test (also run in CI)
 │   ├── .generated/               written by initialize.sh (not tracked)
 │   ├── project-template/         template for new project layers
 │   └── project  ──symlink──►     SLOT: the active project layer (not tracked)
+├── .github/workflows/ci.yml      CI: shellcheck, cred-gw tests, sandbox test
 ├── .dockerignore                 safety net for the build context (excludes everything)
 ├── .gitignore                    ignores the slot and .generated/
 ├── AGENTS.md                     workspace-wide AI instructions (all agents)

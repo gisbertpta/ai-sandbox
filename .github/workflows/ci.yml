@@ -1,0 +1,50 @@
+# CI for the envelope: lint, the cred-gw rules, and an end-to-end test of the
+# sandbox protections (.devcontainer/tests/sandbox-test.sh).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        # Pinned image, so the result doesn't change with the runner's shellcheck
+        run: |
+          git ls-files -z '*.sh' | xargs -0 docker run --rm --network none -v "$PWD:/r:ro" -w /r \
+            koalaman/shellcheck:v0.11.0 -S warning -x
+      - name: JSON files are valid
+        # Strict JSON (Claude refuses to start on an invalid managed settings file);
+        # devcontainer.json is JSONC (comments allowed) and is left out
+        run: git ls-files -z '*.json' ':!:.devcontainer/devcontainer.json' | xargs -0 -n1 jq empty
+
+  cred-gw:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Policy tests (stdlib only, same Python as the cred-gw image)
+        run: |
+          docker run --rm --network none -v "$PWD/.devcontainer/cred-gw:/app:ro" -w /app \
+            -e PYTHONDONTWRITEBYTECODE=1 python:3.11-slim python -m unittest -v
+
+  sandbox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: End-to-end sandbox test
+        run: bash .devcontainer/tests/sandbox-test.sh
