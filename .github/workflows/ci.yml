@@ -20,12 +20,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: shellcheck
-        # Pinned image, so the result doesn't change with the runner's shellcheck
+        # Pinned image (tag + digest), so the result doesn't change with the
+        # runner's shellcheck. Not covered by Dependabot: update by hand.
         run: |
           git ls-files -z '*.sh' '.devcontainer/modules/*/configure' | xargs -0 docker run --rm --network none -v "$PWD:/r:ro" -w /r \
-            koalaman/shellcheck:v0.11.0 -S warning -x
+            koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d -S warning -x
       - name: JSON files are valid
         # Strict JSON (Claude refuses to start on an invalid managed settings file);
         # devcontainer.json is JSONC (comments allowed) and is left out
@@ -35,16 +36,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - name: Policy tests (stdlib only, same Python as the cred-gw image)
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Policy tests (stdlib only), in the gateway image itself
         run: |
+          docker build -q -t cred-gw-ci .devcontainer/modules/cred-gw/gateway
           docker run --rm --network none -v "$PWD/.devcontainer/modules/cred-gw/gateway:/app:ro" -w /app \
-            -e PYTHONDONTWRITEBYTECODE=1 python:3.11-slim python -m unittest -v
+            -e PYTHONDONTWRITEBYTECODE=1 cred-gw-ci python3 -m unittest -v
 
   sandbox:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: End-to-end sandbox test
         run: bash .devcontainer/tests/sandbox-test.sh

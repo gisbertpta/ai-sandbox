@@ -2,7 +2,14 @@
 # Built on the host by initialize.sh as "ai-envelope-base:latest"; the enabled
 # modules (modules/<name>/Dockerfile) are stacked on top of it, and the project
 # layer's Dockerfile starts FROM the last module image.
-FROM node:lts-bookworm-slim
+#
+# Images are pinned (version tag + digest) so a rebuild gets exactly the same
+# base; .github/dependabot.yml opens a PR when a newer one is out.
+
+# uv (Python package/project manager) as its own stage, so Dependabot sees it
+FROM ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 AS uv
+
+FROM node:26.13.0-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68
 
 ENV SHELL=/usr/bin/zsh \
     LANG=C.UTF-8 \
@@ -22,8 +29,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd
 
-# uv (Python package/project manager); projects pin Python and deps themselves
-COPY --from=ghcr.io/astral-sh/uv:0.8.6 /uv /uvx /usr/local/bin/
+# uv; projects pin Python and deps themselves
+COPY --from=uv /uv /uvx /usr/local/bin/
 
 # Replace the default 'node' user with 'dev' at UID/GID 1000
 RUN userdel -f node 2>/dev/null || true \
