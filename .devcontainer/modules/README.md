@@ -30,15 +30,18 @@ line). Without that file, you get `claude` only.
 
 1. Reads `project/modules`.
 2. Checks every module's `prereqs`.
-3. Builds the image chain: `ai-sandbox-base` → `ai-sandbox-mod-claude` →
-   `ai-sandbox-mod-claude-copilot` → … The tag names the whole chain, so
-   projects with different module sets don't overwrite each other.
-4. Generates `.devcontainer/.generated/` (gitignored):
-   - `compose.yml`: `include:` of the modules' `compose.yml`, and the compose
-     override with `BASE_IMAGE` (the last chain image), what the `configure`
-     hooks asked for,
-     all module mounts, and the read-only protection (`.git/config`,
-     `.git/hooks`, `protected-paths`). It is merged between `docker-compose.yml` and `project/compose.yml`.
+3. Runs every module's `configure` hook, if it has one (networks, hosts,
+   `NO_PROXY` for the devcontainer; values for its `compose.yml`).
+4. Builds the image chain: `ai-sandbox-base` → `ai-sandbox-mod-claude` →
+   `ai-sandbox-mod-claude-copilot` → … with each module's `build-contexts` and
+   `build-secrets`. The tag names the whole chain, so projects with different
+   module sets don't overwrite each other.
+5. Generates `.devcontainer/.generated/` (gitignored):
+   - `compose.yml`: `include:` of the modules' `compose.yml`, and the override
+     for the devcontainer: `BASE_IMAGE` (the last chain image), what the
+     `configure` hooks asked for, all module mounts, and the read-only
+     protection (`.git/config`, `.git/hooks`, `protected-paths`). It is merged
+     between `docker-compose.yml` and `project/compose.yml`.
    - `allowlist-modules.txt`: all module allowlists, read by the proxy.
 
 The project layer's `Dockerfile` starts `FROM` the last chain image, so it
@@ -165,7 +168,9 @@ as `! [remote rejected] ... (cred-gw: ...)`.
 set `CRED_GW_SUBNET` in `cred-gw.env` (default `172.30.99.0/28`).
 
 **Migrating from an older setup** (cred-gw wired in the project layer's
-`compose.yml`, tokens in `~/.config/ai-sandbox/{jira,gitlab}-token`): remove
+`compose.yml`, tokens in `~/.config/ai-envelope/{jira,gitlab}-token`): first
+move `~/.config/ai-envelope` to `~/.config/ai-sandbox` (see "Renamed from
+ai-envelope" in the [README](../../README.md#renamed-from-ai-envelope)), then remove
 the `cred-gw` service, its networks, `extra_hosts`, `NO_PROXY` and the
 `sandbox-ca` build context from the layer, move the `*_GW_*` environment
 variables into `cred-gw.env`, and move the tokens:

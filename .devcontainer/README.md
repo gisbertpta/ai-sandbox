@@ -65,9 +65,12 @@ network, so e.g. `uv sync` against a private index works during the build.
 1. **Host:** `initialize.sh` (`initializeCommand`) checks that the slot
    `project/` holds a complete layer, reads the enabled modules from
    `project/modules` (default: `claude`) and checks the host prerequisites
-   (generic + per module). Then it builds `base/` as `ai-sandbox-base:latest`,
-   stacks one image per module on top (e.g. `ai-sandbox-mod-claude-copilot:latest`)
-   and generates `.generated/compose.yml` (module mounts, read-only protection of
+   (generic + per module), then runs the modules' `configure` hooks (e.g.
+   cred-gw checks its tokens and certificate). Then it builds `base/` as
+   `ai-sandbox-base:latest`, stacks one image per module on top (e.g.
+   `ai-sandbox-mod-claude-copilot:latest`, with the modules' build contexts and
+   build secrets) and generates `.generated/compose.yml` (`include:` of the
+   modules' own services, what the hooks asked for, module mounts, read-only protection of
    `.git/config`/`hooks` and `protected-paths` in every working repo, see
    [Security notes](#security-notes--known-gaps)) + `.generated/allowlist-modules.txt`.
    It warns about protected paths and working repos that are new since the last
@@ -378,20 +381,31 @@ request:
 |---|---|
 | `lint` | `shellcheck -S warning` on all `*.sh`, strict JSON check (managed settings) |
 | `cred-gw` | The policy unit tests (`modules/cred-gw/gateway/`), run in the gateway image itself |
-| `sandbox` | `tests/sandbox-test.sh`: builds the images, starts the devcontainer in a throwaway workspace with fake repos and a project layer, and checks that masks hold, protected paths can't be changed or renamed away, normal git work still works, the next start warns about new paths, and with the `cred-gw` module: host names reach the gateway, TLS verifies, the policy applies, the tokens stay out of the devcontainer |
+| `sandbox` | `tests/sandbox-test.sh`: builds the images, starts the devcontainer in a throwaway workspace with fake repos and a project layer, and checks that masks hold, protected paths can't be changed or renamed away, normal git work still works, the next start warns about new paths, a module's build secret reaches the build but not the image, and with the `cred-gw` module: host names reach the gateway, TLS verifies, the policy applies, the tokens stay out of the devcontainer |
 
 Run the end-to-end test on the host after changing `initialize.sh`, the compose
 files or the protection:
 
 ```bash
-bash .devcontainer/tests/sandbox-test.sh             # rebuilds (and retags) the ai-sandbox-* images
-NO_BUILD=1 bash .devcontainer/tests/sandbox-test.sh  # uses the images you have
+bash .devcontainer/tests/sandbox-test.sh             # builds all images fresh
+NO_BUILD=1 bash .devcontainer/tests/sandbox-test.sh  # reuses your ai-sandbox-base and -mod-claude
 ```
 
-It uses its own compose project (`sandbox-test`) and a temp directory, and
-removes both afterwards; your containers and working repos are not touched.
-With `NO_BUILD=1`, it tests the current scripts against your existing images, so
-image changes (base, modules) are only covered by a full run.
+It uses its own compose project (`sandbox-test`), a temp directory and its own
+image names (`ai-sandbox-test-*`, via `AI_SANDBOX_IMAGE_PREFIX`), and removes
+all of them afterwards: your images, containers and working repos are not
+touched. With `NO_BUILD=1`, it tests the current scripts against copies of your
+existing images, so image changes (base, modules) are only covered by a full run.
+
+### Dependency updates
+
+Base images, uv and the GitHub Actions are pinned (version tag + digest, or
+commit). [Dependabot](../.github/dependabot.yml) opens a PR once a week when a
+newer **minor or patch** version is out, and CI checks it like any other PR.
+Major versions (Node, Debian, Actions) and Python minor versions stay manual:
+check the release notes, change the pin, rebuild. Not covered: the shellcheck
+image in `ci.yml` and the agent CLIs (installed `@latest`, updated with
+`NO_CACHE=1 bash .devcontainer/initialize.sh`).
 
 ## Security notes & known gaps
 
