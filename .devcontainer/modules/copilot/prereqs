@@ -1,4 +1,4 @@
 # Host paths that must exist before start: <file|dir> <path> <hint>
 # A missing bind-mount source would be created by Docker as a DIRECTORY.
-file ${HOME}/.config/ai-envelope/copilot-token  create a token, see .devcontainer/modules/README.md
+file ${HOME}/.config/ai-sandbox/copilot-token  create a token, see .devcontainer/modules/README.md
 dir  ${HOME}/.copilot-devcontainer              mkdir ~/.copilot-devcontainer

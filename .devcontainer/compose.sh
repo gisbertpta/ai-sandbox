@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# compose.sh — docker compose with the envelope's files (base + modules + project layer).
+# compose.sh — docker compose with this repo's compose files (base + modules + project layer).
 # Use it instead of a bare 'docker compose' so all files are always merged:
 #   .devcontainer/compose.sh ps
 #   .devcontainer/compose.sh logs -f proxy

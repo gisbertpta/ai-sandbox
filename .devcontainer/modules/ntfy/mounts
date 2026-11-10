@@ -1,2 +1,2 @@
 # Random topic name (host file), read by the Claude Stop hook
-${HOME}/.config/ai-envelope/ntfy-topic:/run/secrets/ntfy-topic:ro
+${HOME}/.config/ai-sandbox/ntfy-topic:/run/secrets/ntfy-topic:ro

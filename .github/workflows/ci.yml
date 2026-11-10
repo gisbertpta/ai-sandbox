@@ -1,4 +1,4 @@
-# CI for the envelope: lint, the cred-gw rules, and an end-to-end test of the
+# CI for the sandbox repo: lint, the cred-gw rules, and an end-to-end test of the
 # sandbox protections (.devcontainer/tests/sandbox-test.sh).
 name: CI
 

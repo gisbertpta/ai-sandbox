@@ -11,7 +11,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/local/libexec/ai-envelope/notify-ntfy.sh",
+            "command": "/usr/local/libexec/ai-sandbox/notify-ntfy.sh",
             "timeout": 10
           }
         ]

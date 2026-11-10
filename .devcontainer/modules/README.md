@@ -29,8 +29,8 @@ line). Without that file, you get `claude` only.
 
 1. Reads `project/modules`.
 2. Checks every module's `prereqs`.
-3. Builds the image chain: `ai-envelope-base` → `ai-envelope-mod-claude` →
-   `ai-envelope-mod-claude-copilot` → … The tag names the whole chain, so
+3. Builds the image chain: `ai-sandbox-base` → `ai-sandbox-mod-claude` →
+   `ai-sandbox-mod-claude-copilot` → … The tag names the whole chain, so
    projects with different module sets don't overwrite each other.
 4. Generates `.devcontainer/.generated/` (gitignored):
    - `compose.yml`: `include:` of the modules' `compose.yml`, and the compose
@@ -138,16 +138,16 @@ and the TLS key. Everything else still goes through the proxy.
    a user who can see the project; GitLab: `api` + `read_repository` +
    `write_repository` only if pushing is enabled):
    ```bash
-   mkdir -p ~/.config/ai-envelope/cred-gw && chmod 700 ~/.config/ai-envelope/cred-gw
-   (umask 077; read -rs -p 'Jira token: ' t && printf '%s\n' "$t" > ~/.config/ai-envelope/cred-gw/jira-token)
-   (umask 077; read -rs -p 'GitLab token: ' t && printf '%s\n' "$t" > ~/.config/ai-envelope/cred-gw/gitlab-token)
+   mkdir -p ~/.config/ai-sandbox/cred-gw && chmod 700 ~/.config/ai-sandbox/cred-gw
+   (umask 077; read -rs -p 'Jira token: ' t && printf '%s\n' "$t" > ~/.config/ai-sandbox/cred-gw/jira-token)
+   (umask 077; read -rs -p 'GitLab token: ' t && printf '%s\n' "$t" > ~/.config/ai-sandbox/cred-gw/gitlab-token)
    ```
 3. Create the sandbox CA and the gateway certificate for the upstream hosts:
    ```bash
    bash .devcontainer/modules/cred-gw/make-certs.sh jira.example.com gitlab.example.com
    ```
    Existing files are kept. To add a host later, delete
-   `~/.config/ai-envelope/sandbox-ca/cred-gw/tls.*` and run it again with all
+   `~/.config/ai-sandbox/sandbox-ca/cred-gw/tls.*` and run it again with all
    hosts (the CA stays, so no image rebuild is needed for the trust).
 4. If the upstream uses a company CA, put its bundle into the project layer and
    set `CRED_GW_UPSTREAM_CA=/run/cred-gw/project/<file>` in `cred-gw.env`.
@@ -164,12 +164,12 @@ as `! [remote rejected] ... (cred-gw: ...)`.
 set `CRED_GW_SUBNET` in `cred-gw.env` (default `172.30.99.0/28`).
 
 **Migrating from an older setup** (cred-gw wired in the project layer's
-`compose.yml`, tokens in `~/.config/ai-envelope/{jira,gitlab}-token`): remove
+`compose.yml`, tokens in `~/.config/ai-sandbox/{jira,gitlab}-token`): remove
 the `cred-gw` service, its networks, `extra_hosts`, `NO_PROXY` and the
 `sandbox-ca` build context from the layer, move the `*_GW_*` environment
 variables into `cred-gw.env`, and move the tokens:
-`mkdir -p ~/.config/ai-envelope/cred-gw && mv ~/.config/ai-envelope/{jira,gitlab}-token ~/.config/ai-envelope/cred-gw/`.
-The certificates in `~/.config/ai-envelope/sandbox-ca/` stay where they are.
+`mkdir -p ~/.config/ai-sandbox/cred-gw && mv ~/.config/ai-sandbox/{jira,gitlab}-token ~/.config/ai-sandbox/cred-gw/`.
+The certificates in `~/.config/ai-sandbox/sandbox-ca/` stay where they are.
 
 ## ntfy notifications
 
@@ -177,9 +177,9 @@ Enable the `ntfy` module, then create a random topic on the host and
 subscribe to it in the ntfy app:
 
 ```bash
-mkdir -p ~/.config/ai-envelope
-(umask 077; openssl rand -hex 16 > ~/.config/ai-envelope/ntfy-topic)
-cat ~/.config/ai-envelope/ntfy-topic
+mkdir -p ~/.config/ai-sandbox
+(umask 077; openssl rand -hex 16 > ~/.config/ai-sandbox/ntfy-topic)
+cat ~/.config/ai-sandbox/ntfy-topic
 ```
 
 The hook sends only a fixed text ("Task finished in <dir>"), no message
@@ -202,8 +202,8 @@ credential the CLI uses).
    - Expiration: as long as your org's policy allows.
 2. Store it on the host:
    ```bash
-   mkdir -p ~/.config/ai-envelope
-   (umask 077; read -rs -p 'Token: ' t && printf '%s\n' "$t" > ~/.config/ai-envelope/copilot-token)
+   mkdir -p ~/.config/ai-sandbox
+   (umask 077; read -rs -p 'Token: ' t && printf '%s\n' "$t" > ~/.config/ai-sandbox/copilot-token)
    mkdir -p ~/.copilot-devcontainer
    ```
 3. Rebuild the container, then run `copilot`. It must start without asking
