@@ -14,8 +14,8 @@
 set -euo pipefail
 
 CONF=project/cred-gw.env
-TOKENS="$HOME/.config/ai-envelope/cred-gw"
-TLS_CERT="$HOME/.config/ai-envelope/sandbox-ca/cred-gw/tls.crt"
+TOKENS="$HOME/.config/ai-sandbox/cred-gw"
+TLS_CERT="$HOME/.config/ai-sandbox/sandbox-ca/cred-gw/tls.crt"
 FAIL=0
 err() { echo "[cred-gw] ERROR: $*" >&2; FAIL=1; }
 
@@ -53,7 +53,7 @@ if [ ${#HOSTS[@]} -gt 0 ] && [ -f "$TLS_CERT" ]; then
     for h in "${HOSTS[@]}"; do
       if ! grep -qiE "DNS:${h//./\\.}(,|$)" <<< "$san"; then
         err "the cred-gw certificate does not cover ${h}. Create a new one (the CA is kept):"
-        echo "        rm ~/.config/ai-envelope/sandbox-ca/cred-gw/tls.* && bash .devcontainer/modules/cred-gw/make-certs.sh ${HOSTS[*]}" >&2
+        echo "        rm ~/.config/ai-sandbox/sandbox-ca/cred-gw/tls.* && bash .devcontainer/modules/cred-gw/make-certs.sh ${HOSTS[*]}" >&2
         break
       fi
     done

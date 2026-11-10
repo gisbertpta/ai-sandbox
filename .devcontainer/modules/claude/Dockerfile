@@ -13,8 +13,8 @@ COPY --chown=root:root claude-wrapper.sh /usr/local/bin/claude
 # Managed settings: highest precedence, apply in every directory (also nested
 # repos), and root-owned, so the agent can't change them
 COPY --chown=root:root managed-settings.json /etc/claude-code/managed-settings.json
-COPY --chown=root:root notify-ntfy.sh /usr/local/libexec/ai-envelope/notify-ntfy.sh
-RUN chmod 755 /usr/local/bin/claude /usr/local/libexec/ai-envelope/notify-ntfy.sh \
+COPY --chown=root:root notify-ntfy.sh /usr/local/libexec/ai-sandbox/notify-ntfy.sh
+RUN chmod 755 /usr/local/bin/claude /usr/local/libexec/ai-sandbox/notify-ntfy.sh \
     && chmod 644 /etc/claude-code/managed-settings.json \
     && install -d -m 755 /etc/claude-code/managed-settings.d
 # managed-settings.d/: the project layer's claude-settings.json is mounted here

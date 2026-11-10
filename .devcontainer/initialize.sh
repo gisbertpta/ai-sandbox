@@ -22,14 +22,14 @@
 #
 # NO_CACHE=1 bash .devcontainer/initialize.sh  rebuilds all images without cache
 # (pulls the latest agent CLIs).
-# AI_ENVELOPE_IMAGE_PREFIX=<prefix> names the images <prefix>-base, <prefix>-mod-...
-# instead of ai-envelope-... (used by tests/sandbox-test.sh, so it never
+# AI_SANDBOX_IMAGE_PREFIX=<prefix> names the images <prefix>-base, <prefix>-mod-...
+# instead of ai-sandbox-... (used by tests/sandbox-test.sh, so it never
 # replaces your images).
 
 set -euo pipefail
 cd "$(dirname "$0")"
 
-IMAGE_PREFIX="${AI_ENVELOPE_IMAGE_PREFIX:-ai-envelope}"
+IMAGE_PREFIX="${AI_SANDBOX_IMAGE_PREFIX:-ai-sandbox}"
 BASE_IMAGE="${IMAGE_PREFIX}-base:latest"
 DEFAULT_MODULES=(claude)
 GEN=.generated
@@ -101,6 +101,17 @@ for m in "${MODULES[@]}"; do
 done
 
 # ── 3. Host prerequisites ─────────────────────────────────────────────────────
+# Renamed from ai-envelope: host files moved from ~/.config/ai-envelope/. Say so
+# instead of failing on each missing token or certificate.
+if [ -d "$HOME/.config/ai-envelope" ]; then
+  if [ ! -e "$HOME/.config/ai-sandbox" ]; then
+    echo "[init] ERROR: host files now live in ~/.config/ai-sandbox/ (was ~/.config/ai-envelope/). Move them:"
+    echo "         mv ~/.config/ai-envelope ~/.config/ai-sandbox"
+    exit 1
+  fi
+  echo "[init] WARNING: ~/.config/ai-envelope/ is no longer used (now ~/.config/ai-sandbox/). Remove it when nothing in it is needed."
+fi
+
 # A missing bind-mount source file would be created by Docker as a DIRECTORY.
 if [ ! -f "$HOME/.gitconfig" ]; then
   echo "[init] ERROR: $HOME/.gitconfig must exist as a file."
@@ -140,7 +151,7 @@ echo "[init] Modules: ${MODULES[*]:-(none)}"
 echo "[init] Building base image ${BASE_IMAGE} ..."
 docker build "${BUILD_OPTS[@]}" "${BASE_OPTS[@]}" -t "$BASE_IMAGE" base
 
-# Tag per chain (ai-envelope-mod-claude-copilot), so projects with different
+# Tag per chain (ai-sandbox-mod-claude-copilot), so projects with different
 # module sets don't overwrite each other's images. Modules without a Dockerfile
 # (e.g. ntfy) only contribute mounts/allowlist.
 image="$BASE_IMAGE"
@@ -163,7 +174,7 @@ done
 # ── 5. Read-only protection ───────────────────────────────────────────────────
 # Paths that tools on the HOST run or load without asking (git hooks/config,
 # Claude/VS Code/devcontainer settings, ...) are mounted read-only, in every
-# working repo and in the envelope root: protected-paths (generic) adjusted by
+# working repo and in the workspace root: protected-paths (generic) adjusted by
 # project/protected-paths. Plus .git/config + .git/hooks of every working repo
 # and the project layer itself.
 #
@@ -221,7 +232,7 @@ for p in "${PROTECTED[@]}"; do
   fi
 done
 
-# protect_repo <repo> (relative to the workspace root, '' = envelope root)
+# protect_repo <repo> (relative to the workspace root, '' = workspace root)
 protect_repo() {
   local repo="$1" p full done_list=()
   local -a paths=("${PROTECTED[@]}")
@@ -239,7 +250,7 @@ protect_repo() {
     fi
   fi
   for p in "${paths[@]}"; do
-    # The envelope's .devcontainer/ is read-only already (docker-compose.yml)
+    # This repo's .devcontainer/ is read-only already (docker-compose.yml)
     [ -z "$repo" ] && [ "${p#./}" = .devcontainer ] && continue
     full="${repo:+$repo/}${p#./}"
     if [ -e "../$full" ] || [ -L "../$full" ]; then
@@ -249,11 +260,11 @@ protect_repo() {
       NOT_PROTECTED+=("$full")
     fi
   done
-  echo "[init] ${repo:-envelope root}: read-only ${done_list[*]:-(nothing)}"
+  echo "[init] ${repo:-workspace root}: read-only ${done_list[*]:-(nothing)}"
 }
 
 # Working repos: every git repo up to two levels below the workspace root
-# (except the envelope itself, whose .git is mounted read-only as a whole)
+# (except this repo itself, whose .git is mounted read-only as a whole)
 REPOS=()
 while IFS= read -r gitdir; do
   repo="${gitdir%/.git}"; repo="${repo#../}"

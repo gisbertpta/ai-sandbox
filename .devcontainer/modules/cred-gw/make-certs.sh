@@ -5,20 +5,20 @@
 #
 # The hosts are the upstream Jira/GitLab names the devcontainer uses; cred-gw answers for them.
 #
-# Layout under ~/.config/ai-envelope/sandbox-ca/ (outside the workspace; the devcontainer must not read the keys):
+# Layout under ~/.config/ai-sandbox/sandbox-ca/ (outside the workspace; the devcontainer must not read the keys):
 #   public/ca.crt          trusted by the devcontainer image (build context 'sandbox-ca')
 #   private/ca.key         CA key, never mounted anywhere
 #   cred-gw/tls.crt, .key  served by cred-gw, mounted only into cred-gw
 set -euo pipefail
 
-dir="${HOME}/.config/ai-envelope/sandbox-ca"
+dir="${HOME}/.config/ai-sandbox/sandbox-ca"
 if [ $# -eq 0 ]; then echo "usage: $0 <host> [host ...]   (e.g. jira.example.com git.example.com)" >&2; exit 1; fi
 hosts=("$@")
 mkdir -p "$dir/public" "$dir/private" "$dir/cred-gw"
 chmod 700 "$dir/private" "$dir/cred-gw"
 
 if [ ! -f "$dir/private/ca.key" ]; then
-  openssl req -x509 -newkey rsa:3072 -nodes -days 3650 -subj "/CN=ai-envelope sandbox CA" \
+  openssl req -x509 -newkey rsa:3072 -nodes -days 3650 -subj "/CN=ai-sandbox CA" \
     -addext "basicConstraints=critical,CA:TRUE,pathlen:0" -addext "keyUsage=critical,keyCertSign,cRLSign" \
     -keyout "$dir/private/ca.key" -out "$dir/public/ca.crt"
   chmod 600 "$dir/private/ca.key"

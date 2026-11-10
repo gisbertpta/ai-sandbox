@@ -1,5 +1,5 @@
 # Generic base image for the AI sandbox: no agent CLI, no project-specific content.
-# Built on the host by initialize.sh as "ai-envelope-base:latest"; the enabled
+# Built on the host by initialize.sh as "ai-sandbox-base:latest"; the enabled
 # modules (modules/<name>/Dockerfile) are stacked on top of it, and the project
 # layer's Dockerfile starts FROM the last module image.
 #

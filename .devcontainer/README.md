@@ -65,8 +65,8 @@ network, so e.g. `uv sync` against a private index works during the build.
 1. **Host:** `initialize.sh` (`initializeCommand`) checks that the slot
    `project/` holds a complete layer, reads the enabled modules from
    `project/modules` (default: `claude`) and checks the host prerequisites
-   (generic + per module). Then it builds `base/` as `ai-envelope-base:latest`,
-   stacks one image per module on top (e.g. `ai-envelope-mod-claude-copilot:latest`)
+   (generic + per module). Then it builds `base/` as `ai-sandbox-base:latest`,
+   stacks one image per module on top (e.g. `ai-sandbox-mod-claude-copilot:latest`)
    and generates `.generated/compose.yml` (module mounts, read-only protection of
    `.git/config`/`hooks` and `protected-paths` in every working repo, see
    [Security notes](#security-notes--known-gaps)) + `.generated/allowlist-modules.txt`.
@@ -88,7 +88,7 @@ network, so e.g. `uv sync` against a private index works during the build.
 | `docker-compose.yml` | **The generic config:** build, mounts, capabilities, networks, proxy env. |
 | `initialize.sh` | Runs on the host before start: checks the slot and prerequisites, builds base + module images, generates `.generated/`. |
 | `tests/sandbox-test.sh` | End-to-end test of masks and read-only protection (see [Testing](#testing)). |
-| `protected-paths` | Paths in every working repo (and the envelope root) that host tools run by themselves; mounted read-only. |
+| `protected-paths` | Paths in every working repo (and the workspace root) that host tools run by themselves; mounted read-only. |
 | `compose.sh` | `docker compose` with all compose files. Use it instead of bare `docker compose`. |
 | `devcontainer-compose-cheatsheet.md` | Host commands at a glance: start, rebuild, logs, config, proxy and cred-gw maintenance, cleanup, troubleshooting. |
 | `base/Dockerfile` | Generic image: Node (LTS), zsh, vim, git, rg, fd, jq, fzf, shellcheck, python3, uv, `dev` user. No agent CLI. Base images pinned by tag + digest. |
@@ -123,9 +123,9 @@ These must exist on the host before the first build. `initialize.sh` checks them
 | `~/.gitconfig` | always | Git identity (read-only). **Must exist as a file.** If a mounted file is missing, Docker creates a *directory* with that name instead. |
 | `~/.claude-devcontainer/` | `claude` | Sandbox-only Claude home (login, sessions). **Not** your host `~/.claude`. |
 | `~/.claude-devcontainer.json` | `claude` | Sandbox-only Claude state file. Must exist as a file: `echo '{}' > ~/.claude-devcontainer.json`. |
-| `~/.config/ai-envelope/copilot-token` | `copilot` | Fine-grained PAT. See [Copilot token](modules/README.md#copilot-token). |
+| `~/.config/ai-sandbox/copilot-token` | `copilot` | Fine-grained PAT. See [Copilot token](modules/README.md#copilot-token). |
 | `~/.copilot-devcontainer/` | `copilot` | Copilot config/state, separate from a host `~/.copilot`. |
-| `~/.config/ai-envelope/ntfy-topic` | `ntfy` | Random topic name: `(umask 077; openssl rand -hex 16 > ~/.config/ai-envelope/ntfy-topic)`. Subscribe to it in the ntfy app. |
+| `~/.config/ai-sandbox/ntfy-topic` | `ntfy` | Random topic name: `(umask 077; openssl rand -hex 16 > ~/.config/ai-sandbox/ntfy-topic)`. Subscribe to it in the ntfy app. |
 
 The project layer may need more (e.g. `~/.build-secrets/` for build
 credentials). Its README lists them.
@@ -169,7 +169,7 @@ which is on by default.
 
 ```bash
 .devcontainer/compose.sh down
-ln -sfn ../other-repo/ai-envelope .devcontainer/project
+ln -sfn ../other-repo/ai-sandbox .devcontainer/project
 devcontainer up --workspace-folder .
 ```
 
@@ -308,7 +308,7 @@ WARN   my-repo/config  <-- not masked!
 
 ### Build fails
 
-- `pull access denied for ai-envelope-base` / `ai-envelope-mod-…` → the base or
+- `pull access denied for ai-sandbox-base` / `ai-sandbox-mod-…` → the base or
   module images weren't built. Start via VS Code / `devcontainer up` (runs
   `initialize.sh`), or run `bash .devcontainer/initialize.sh` once.
 - `COPY … not found` → the file isn't allowlisted in
@@ -351,12 +351,12 @@ WARN   my-repo/config  <-- not masked!
 
 - The `ntfy` module must be enabled in `project/modules` (it allowlists `ntfy.sh`
   and mounts the topic file).
-- Test inside the container: `echo '{}' | /usr/local/libexec/ai-envelope/notify-ntfy.sh`.
+- Test inside the container: `echo '{}' | /usr/local/libexec/ai-sandbox/notify-ntfy.sh`.
 
 ### git can't write `.git/config` / hooks inside the container
 
 On purpose: `.git/config` and `.git/hooks` of every working repo are read-only
-in the container, the envelope's whole `.git` too. Commits work; `git config`,
+in the container, this repo's whole `.git` too. Commits work; `git config`,
 `git remote add`, installing hooks etc. must be done on the host. A repo cloned
 while the container runs is protected only after the next rebuild/restart
 (`initialize.sh` finds it). Repos with a `.git` *file* (worktrees, submodules)
@@ -384,7 +384,7 @@ Run the end-to-end test on the host after changing `initialize.sh`, the compose
 files or the protection:
 
 ```bash
-bash .devcontainer/tests/sandbox-test.sh             # rebuilds (and retags) the ai-envelope-* images
+bash .devcontainer/tests/sandbox-test.sh             # rebuilds (and retags) the ai-sandbox-* images
 NO_BUILD=1 bash .devcontainer/tests/sandbox-test.sh  # uses the images you have
 ```
 
@@ -399,13 +399,13 @@ image changes (base, modules) are only covered by a full run.
 
 - **What host tools run by themselves stays read-only.** For the agent:
   `.devcontainer/`, the project layer (also when it lives in a working repo),
-  the envelope's `.git`, `AGENTS.md`/`CLAUDE.md`, `.gitignore`, `.dockerignore`,
+  this repo's `.git`, `AGENTS.md`/`CLAUDE.md`, `.gitignore`, `.dockerignore`,
   and in every working repo `.git/config` + `.git/hooks` (no planted hooks,
   `core.fsmonitor`, aliases or filters for your next host `git`), a
   `core.hooksPath` inside the repo (e.g. `.husky/`), and every path in
   [`protected-paths`](protected-paths): `.claude/`, `.mcp.json`, `.vscode/`,
   `.devcontainer/`, `.envrc`, `.pre-commit-config.yaml`. The same list applies
-  to the envelope root. A project layer adjusts it in its own `protected-paths`.
+  to the workspace root. A project layer adjusts it in its own `protected-paths`.
 - **Read-only can't be undone by renaming.** A mount point can't be renamed, but
   its parent directory can (`mv repo/.git repo/.git-x`, then a fresh `.git` with
   a planted hook). So `initialize.sh` also mounts every directory above a

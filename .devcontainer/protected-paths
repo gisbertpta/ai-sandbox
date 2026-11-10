@@ -1,5 +1,5 @@
 # Paths that tools on the HOST run or load without asking, so the agent must not
-# change them. Relative to each working repo and to the envelope root; every one
+# change them. Relative to each working repo and to the workspace root; every one
 # that exists is mounted read-only by initialize.sh (one per line, # = comment).
 #
 # Always protected in addition (not listed here): .git/config, .git/hooks and a

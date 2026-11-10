@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # sandbox-test.sh — end-to-end test of the sandbox protections, on the host.
 #
-# Builds a throwaway workspace (a copy of this envelope + fake working repos and
+# Builds a throwaway workspace (a copy of this repo + fake working repos and
 # a project layer), runs initialize.sh, starts the devcontainer service via
 # compose (project name 'sandbox-test') and checks from inside the container:
 #   - secret masks hold and check-exclusions passes
@@ -14,32 +14,32 @@
 #
 #   bash .devcontainer/tests/sandbox-test.sh
 #   NO_BUILD=1 bash .devcontainer/tests/sandbox-test.sh   # reuse your existing
-#       ai-envelope-base and ai-envelope-mod-claude images (faster, but tests
+#       ai-sandbox-base and ai-sandbox-mod-claude images (faster, but tests
 #       the current scripts against the images you have)
 #
-# The test builds its images as ai-envelope-test-* and removes them afterwards,
-# so it never replaces your ai-envelope-* images (the cred-gw module image of the
+# The test builds its images as ai-sandbox-test-* and removes them afterwards,
+# so it never replaces your ai-sandbox-* images (the cred-gw module image of the
 # test trusts a throwaway CA).
 #
 # Needs: docker with compose >= 2.20 (include), git, openssl. Run in CI by .github/workflows/ci.yml.
 
 set -euo pipefail
 
-ENVELOPE="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 TMP="$(mktemp -d)"
 WS="$TMP/ws"
 export HOME="$TMP/home"
-export AI_ENVELOPE_IMAGE_PREFIX=ai-envelope-test
+export AI_SANDBOX_IMAGE_PREFIX=ai-sandbox-test
 COMPOSE=(docker compose -p sandbox-test -f docker-compose.yml -f .generated/compose.yml -f project/compose.yml)
 FAILED=0
 
 cleanup() {
   (cd "$WS/.devcontainer" 2>/dev/null && "${COMPOSE[@]}" down --rmi local -v >/dev/null 2>&1) || true
   # The container created files as uid 1000; remove them as root in a container
-  docker run --rm --network none -u 0 -v "$TMP:/t" --entrypoint sh ai-envelope-test-base:latest \
+  docker run --rm --network none -u 0 -v "$TMP:/t" --entrypoint sh ai-sandbox-test-base:latest \
     -c 'rm -rf /t/* /t/.[!.]*' >/dev/null 2>&1 || true
   rm -rf "$TMP" 2>/dev/null || true
-  docker images --format '{{.Repository}}:{{.Tag}}' 'ai-envelope-test-*' | xargs -r docker rmi -f >/dev/null 2>&1 || true
+  docker images --format '{{.Repository}}:{{.Tag}}' 'ai-sandbox-test-*' | xargs -r docker rmi -f >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -51,9 +51,9 @@ mkdir -p "$WS" "$HOME/.claude-devcontainer"
 echo '{}' > "$HOME/.claude-devcontainer.json"
 touch "$HOME/.gitconfig"
 
-# The envelope: tracked + new files only (no working repos, no .generated/, no slot)
-git -C "$ENVELOPE" ls-files -z --cached --others --exclude-standard \
-  | (cd "$ENVELOPE" && tar --null -T - -cf -) | tar -C "$WS" -xf -
+# This repo: tracked + new files only (no working repos, no .generated/, no slot)
+git -C "$REPO_ROOT" ls-files -z --cached --others --exclude-standard \
+  | (cd "$REPO_ROOT" && tar --null -T - -cf -) | tar -C "$WS" -xf -
 mkdir -p "$WS/.git" "$WS/.claude"
 
 # repo-a: host-executed config, a core.hooksPath and two secrets to mask
@@ -70,9 +70,9 @@ echo SECRET > "$WS/repo-a/configs/secrets.yml"
 git init -q "$WS/repo-b"
 echo '# repo-b' > "$WS/repo-b/README.md"
 ln -s /etc/passwd "$WS/repo-b/.envrc"
-LAYER="$WS/repo-b/ai-envelope"
+LAYER="$WS/repo-b/ai-sandbox"
 cp -r "$WS/.devcontainer/project-template" "$LAYER"
-ln -s ../repo-b/ai-envelope "$WS/.devcontainer/project"
+ln -s ../repo-b/ai-sandbox "$WS/.devcontainer/project"
 mkdir -p "$LAYER/dummies/repo-a/configs"
 echo dummy > "$LAYER/dummies/repo-a/configs/secrets.yml"
 printf 'repo-a/.env\nrepo-a/configs\n' > "$LAYER/excluded-files"
@@ -94,17 +94,17 @@ services:
 EOF
 
 # cred-gw: fake tokens, sandbox CA + gateway certificate for the two hosts
-mkdir -p "$HOME/.config/ai-envelope/cred-gw"
-echo jira-fake-token-4711 > "$HOME/.config/ai-envelope/cred-gw/jira-token"
-echo gitlab-fake-token-4711 > "$HOME/.config/ai-envelope/cred-gw/gitlab-token"
+mkdir -p "$HOME/.config/ai-sandbox/cred-gw"
+echo jira-fake-token-4711 > "$HOME/.config/ai-sandbox/cred-gw/jira-token"
+echo gitlab-fake-token-4711 > "$HOME/.config/ai-sandbox/cred-gw/gitlab-token"
 bash "$WS/.devcontainer/modules/cred-gw/make-certs.sh" jira.example.test gitlab.example.test > "$TMP/certs.log" 2>&1 \
   || { cat "$TMP/certs.log"; echo "FAIL: make-certs.sh"; exit 1; }
 
 # CI runners don't run as uid 1000 ('dev' in the container, 'gw' in cred-gw):
 # make the fixture readable/writable for it. Read-only mounts stay read-only.
 chmod -R a+rwX "$WS"
-chmod a+r "$HOME/.config/ai-envelope/cred-gw"/* "$HOME/.config/ai-envelope/sandbox-ca/cred-gw/tls.key"
-chmod a+rx "$HOME/.config/ai-envelope/sandbox-ca/cred-gw"
+chmod a+r "$HOME/.config/ai-sandbox/cred-gw"/* "$HOME/.config/ai-sandbox/sandbox-ca/cred-gw/tls.key"
+chmod a+rx "$HOME/.config/ai-sandbox/sandbox-ca/cred-gw"
 
 # ── initialize.sh ─────────────────────────────────────────────────────────────
 INIT_ENV=()
@@ -112,9 +112,9 @@ if [ "${NO_BUILD:-}" = 1 ]; then
   # Your images under the test names; the shim then skips 'docker build -t <tag>'
   # when <tag> exists, so only the cred-gw module image is built
   for img in base mod-claude; do
-    docker image inspect "ai-envelope-$img:latest" > /dev/null 2>&1 \
-      || { echo "FAIL: NO_BUILD=1 needs ai-envelope-$img:latest (run once without it)"; exit 1; }
-    docker tag "ai-envelope-$img:latest" "ai-envelope-test-$img:latest"
+    docker image inspect "ai-sandbox-$img:latest" > /dev/null 2>&1 \
+      || { echo "FAIL: NO_BUILD=1 needs ai-sandbox-$img:latest (run once without it)"; exit 1; }
+    docker tag "ai-sandbox-$img:latest" "ai-sandbox-test-$img:latest"
   done
   mkdir -p "$TMP/bin"
   cat > "$TMP/bin/docker" <<EOF
@@ -174,9 +174,9 @@ expect blocked "edit .claude/settings.json"      sh -c 'echo x >> repo-a/.claude
 expect blocked "edit core.hooksPath hook"        sh -c 'echo evil >> repo-a/.husky/pre-commit'
 expect blocked "set core.fsmonitor"              git -C repo-a config core.fsmonitor evil
 expect blocked "add a .git/hooks hook"           touch repo-a/.git/hooks/post-checkout
-expect blocked "edit project layer compose.yml"  sh -c 'echo x >> repo-b/ai-envelope/compose.yml'
-expect blocked "write envelope .claude/"         touch .claude/settings.json
-expect blocked "edit envelope .devcontainer/"    touch .devcontainer/x
+expect blocked "edit project layer compose.yml"  sh -c 'echo x >> repo-b/ai-sandbox/compose.yml'
+expect blocked "write workspace-root .claude/"   touch .claude/settings.json
+expect blocked "edit /workspace/.devcontainer/"  touch .devcontainer/x
 # A /dev/null mask accepts writes (they go to /dev/null); the secret must stay hidden
 expect allowed "write to masked .env goes nowhere" sh -c 'echo x > repo-a/.env && [ ! -s repo-a/.env ]'
 
@@ -217,8 +217,21 @@ grep -q '"../repo-b/.mcp.json:/workspace/repo-b/.mcp.json:ro"' .generated/compos
   && echo "  ok    repo-b/.mcp.json is read-only from now on" \
   || fail "repo-b/.mcp.json not protected after it appeared"
 
+# Host files still in the old ~/.config/ai-envelope/ only: the start must stop
+mv "$HOME/.config/ai-sandbox" "$HOME/.config/ai-sandbox.moved"
+mkdir -p "$HOME/.config/ai-envelope"
+if "${INIT_ENV[@]}" bash initialize.sh > "$TMP/init-rename.log" 2>&1; then
+  fail "initialize.sh started with only ~/.config/ai-envelope/"
+elif grep -q 'mv ~/.config/ai-envelope ~/.config/ai-sandbox' "$TMP/init-rename.log"; then
+  echo "  ok    old ~/.config/ai-envelope/ stops the start with the mv hint"
+else
+  cat "$TMP/init-rename.log"; fail "initialize.sh failed, but without the rename hint"
+fi
+rmdir "$HOME/.config/ai-envelope"
+mv "$HOME/.config/ai-sandbox.moved" "$HOME/.config/ai-sandbox"
+
 # cred-gw configured without its token: the start must stop
-rm "$HOME/.config/ai-envelope/cred-gw/gitlab-token"
+rm "$HOME/.config/ai-sandbox/cred-gw/gitlab-token"
 if "${INIT_ENV[@]}" bash initialize.sh > "$TMP/init3.log" 2>&1; then
   fail "initialize.sh started without the gitlab token"
 elif grep -q 'gitlab is configured, but .*gitlab-token is missing' "$TMP/init3.log"; then

@@ -10,11 +10,11 @@ ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
 USER root
-COPY --from=sandbox-ca ca.crt /usr/local/share/ca-certificates/ai-envelope-sandbox-ca.crt
+COPY --from=sandbox-ca ca.crt /usr/local/share/ca-certificates/ai-sandbox-ca.crt
 RUN update-ca-certificates
 # Clients that bring their own CA bundle: point them at the system bundle
 # (all public CAs + the sandbox CA)
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
     REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
-    NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/ai-envelope-sandbox-ca.crt
+    NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/ai-sandbox-ca.crt
 USER dev

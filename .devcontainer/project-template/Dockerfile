@@ -3,7 +3,7 @@
 # agent CLIs enabled in 'modules'. initialize.sh passes it as BASE_IMAGE.
 # Build context: the workspace root. Only files allowlisted in
 # Dockerfile.dockerignore are visible to COPY.
-ARG BASE_IMAGE=ai-envelope-base:latest
+ARG BASE_IMAGE=ai-sandbox-base:latest
 FROM ${BASE_IMAGE}
 
 # Nothing project-specific yet. Typical additions (uncomment and adapt):

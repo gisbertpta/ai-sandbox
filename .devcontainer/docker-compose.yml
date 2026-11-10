@@ -43,7 +43,7 @@ services:
     volumes:
       - ..:/workspace:cached
       # Read-only: the agent must not be able to edit its own sandbox config,
-      # its instructions, or the envelope's git repo (hooks/config would run on the host)
+      # its instructions, or this repo's .git (hooks/config would run on the host)
       - ./:/workspace/.devcontainer:ro
       - ../.git:/workspace/.git:ro
       - ../AGENTS.md:/workspace/AGENTS.md:ro

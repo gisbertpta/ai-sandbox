@@ -22,8 +22,8 @@ services:
       GITLAB_GW_TOKEN_FILE: /run/cred-gw/tokens/gitlab-token
     volumes:
       # Only the gateway's own files: its tokens and its TLS key (not the CA key)
-      - ${HOME}/.config/ai-envelope/cred-gw:/run/cred-gw/tokens:ro
-      - ${HOME}/.config/ai-envelope/sandbox-ca/cred-gw:/run/cred-gw/tls:ro
+      - ${HOME}/.config/ai-sandbox/cred-gw:/run/cred-gw/tokens:ro
+      - ${HOME}/.config/ai-sandbox/sandbox-ca/cred-gw:/run/cred-gw/tls:ro
       # The project layer, e.g. for CRED_GW_UPSTREAM_CA=/run/cred-gw/project/upstream-ca.crt
       - ../../project:/run/cred-gw/project:ro
     cap_drop:

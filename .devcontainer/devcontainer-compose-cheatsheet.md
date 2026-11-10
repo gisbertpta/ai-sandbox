@@ -1,4 +1,4 @@
-# Devcontainer compose cheat sheet (ai-envelope)
+# Devcontainer compose cheat sheet (ai-sandbox)
 
 All commands run **on the host**, from the repo root (the folder containing `.devcontainer/`).
 Not from inside the devcontainer: it has no Docker access and mounts `.devcontainer/` read-only.
@@ -10,7 +10,7 @@ Not from inside the devcontainer: it has no Docker access and mounts `.devcontai
   A bare `docker compose` only sees part of the config and gets the project name wrong.
 - **Start** via VS Code or `devcontainer up`, not `compose.sh up`. Only those run `initialize.sh`
   (base/module images, `.generated/`) and `check-exclusions`.
-- Compose project name: whatever `name:` in `project/compose.yml` says, e.g. `ai-envelope-myproject`.
+- Compose project name: whatever `name:` in `project/compose.yml` says, e.g. `ai-sandbox-myproject`.
   Below, `<name>` stands for it; containers are called `<name>-devcontainer-1`, `<name>-proxy-1`, ….
 - Services: `devcontainer`, `proxy` (squid egress allowlist), and `cred-gw` (Jira/GitLab token gateway)
   when the project enables the `cred-gw` module.
@@ -77,7 +77,7 @@ changes need `build proxy` + `up -d --no-deps proxy`.
 | --- | --- |
 | After editing `modules/cred-gw/gateway/*.py` or the policy in `project/cred-gw.env` | `.devcontainer/compose.sh up -d --no-deps --build cred-gw` |
 | After changing an upstream host in `project/cred-gw.env` | rebuild the devcontainer (host names go into its `extra_hosts`/`NO_PROXY`) |
-| After rotating `~/.config/ai-envelope/cred-gw/{jira,gitlab}-token` | `.devcontainer/compose.sh up -d --no-deps --force-recreate cred-gw` |
+| After rotating `~/.config/ai-sandbox/cred-gw/{jira,gitlab}-token` | `.devcontainer/compose.sh up -d --no-deps --force-recreate cred-gw` |
 | Run the policy tests (host, stdlib only; tests are not in the image) | `cd .devcontainer/modules/cred-gw/gateway && python3 -m unittest -v` |
 
 Secrets are read when the container is created, so a plain `restart` may not pick up a new
@@ -98,7 +98,7 @@ Without `-u dev`, `exec` runs as root. Prefer `devcontainer exec`; it also appli
 
 ```bash
 .devcontainer/compose.sh down                      # BEFORE switching: compose.sh finds containers by name:
-ln -sfn ../other-repo/ai-envelope .devcontainer/project
+ln -sfn ../other-repo/ai-sandbox .devcontainer/project
 devcontainer up --workspace-folder .
 ```
 
@@ -111,7 +111,7 @@ devcontainer up --workspace-folder .
 | Also remove volumes (shell history) | `.devcontainer/compose.sh down -v` |
 | Also remove images built by compose | `.devcontainer/compose.sh down --rmi local` |
 | Remove dangling build cache | `docker builder prune` |
-| List base/module images | `docker images 'ai-envelope-*'` |
+| List base/module images | `docker images 'ai-sandbox-*'` |
 
 Avoid `docker system prune -a` and host-wide `docker rm $(docker ps -aq)`: they hit every
 container and image on the host, not just this project.
@@ -120,7 +120,7 @@ container and image on the host, not just this project.
 
 | Symptom | First command |
 | --- | --- |
-| `pull access denied for ai-envelope-base` / `ai-envelope-mod-…` | `bash .devcontainer/initialize.sh` |
+| `pull access denied for ai-sandbox-base` / `ai-sandbox-mod-…` | `bash .devcontainer/initialize.sh` |
 | `.generated/compose.yml missing` | `bash .devcontainer/initialize.sh` |
 | `secret …: file not found` | check `~/.build-secrets/*` exist on host |
 | Mounted path is a directory instead of a file | create the host file (e.g. `echo '{}' > ~/.claude-devcontainer.json`), then rebuild |

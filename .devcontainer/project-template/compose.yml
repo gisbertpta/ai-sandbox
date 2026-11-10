@@ -6,7 +6,7 @@
 
 # Compose project name → container names <name>-devcontainer-1 / <name>-proxy-1.
 # Pick one per project so several projects can run side by side.
-name: ai-envelope-myproject
+name: ai-sandbox-myproject
 
 services:
   devcontainer:

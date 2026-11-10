@@ -1,4 +1,4 @@
-# AI dev envelope
+# AI sandbox
 
 A reusable workspace that wraps one or more **working repos** in a sandboxed
 devcontainer for running agent CLIs (Claude Code, GitHub Copilot CLI) with
@@ -11,7 +11,7 @@ specific project (toolchain, dependencies, masked secrets, extra domains) lives
 in a separate **project layer** that is plugged into a fixed slot.
 
 ```
-/workspace                        ← this repo (the envelope)
+/workspace                        ← this repo (the sandbox repo)
 ├── .devcontainer/
 │   ├── devcontainer.json         entry point: base + modules + project compose files
 │   ├── docker-compose.yml        generic: sandbox, proxy, networks, generic mounts
@@ -45,7 +45,7 @@ in a separate **project layer** that is plugged into a fixed slot.
 
 | | Base (this repo) | Agent modules (this repo, `modules/<name>/`) | Project layer (slot `.devcontainer/project`) |
 |---|---|---|---|
-| Image | `base/Dockerfile` → `ai-envelope-base:latest`: Node, CLI tools, uv, `dev` user, exclusion check | `Dockerfile` per module, stacked: install the CLI behind a wrapper that runs the exclusion check | `Dockerfile` `FROM` the last module image: system libs, CA certs, Python version, dependencies, pre-commit hooks |
+| Image | `base/Dockerfile` → `ai-sandbox-base:latest`: Node, CLI tools, uv, `dev` user, exclusion check | `Dockerfile` per module, stacked: install the CLI behind a wrapper that runs the exclusion check | `Dockerfile` `FROM` the last module image: system libs, CA certs, Python version, dependencies, pre-commit hooks |
 | Compose | sandbox/egress networks, proxy, capabilities, proxy env, `~/.gitconfig` mount | `mounts` (agent home, token), `compose.yml` (own services, e.g. `cred-gw`), `configure` (hosts, networks) | compose `name`, masking mounts, build secrets, env vars |
 | Selection | always | `modules` file in the project layer (default: `claude`) | the slot symlink |
 | Build context filter | `.dockerignore` (excludes everything) | the module folder | `Dockerfile.dockerignore` (allowlist of files to `COPY`) |
@@ -59,7 +59,7 @@ How they are joined:
 
 - `initialize.sh` runs on the host before every start (cached, so usually
   instant). It builds the base image, stacks the enabled modules on top
-  (`ai-envelope-mod-claude-copilot:latest`) and generates
+  (`ai-sandbox-mod-claude-copilot:latest`) and generates
   `.generated/compose.yml` with the module mounts, the resulting image name and
   read-only mounts for every working repo's `.git/config` + `.git/hooks`.
 - `devcontainer.json` loads `docker-compose.yml`, `.generated/compose.yml` and
@@ -86,14 +86,14 @@ The sandbox itself (how it works, debugging, security notes) is described in
 1. Clone this repo, then clone the working repos into its root and ignore them
    (see [Ignoring working repos](#ignoring-working-repos)):
    ```bash
-   git clone <envelope-url> workspace && cd workspace
+   git clone <sandbox-repo-url> workspace && cd workspace
    git clone <working-repo-url> <working-repo>
    echo '/<working-repo>/' >> .git/info/exclude
    ```
 2. Link the project layer into the slot. The link target is relative to
    `.devcontainer/`:
    ```bash
-   ln -s ../<umbrella-repo>/ai-envelope .devcontainer/project   # layer lives in a working repo
+   ln -s ../<umbrella-repo>/ai-sandbox .devcontainer/project   # layer lives in a working repo
    ```
 3. Create the host prerequisites: the generic ones in
    [`.devcontainer/README.md`](.devcontainer/README.md#prerequisites-host), plus
@@ -115,7 +115,7 @@ what goes into it with commented examples. Copy it and fill it in step by step.
 ### 1. Set up the workspace
 
 ```bash
-git clone <envelope-url> my-workspace && cd my-workspace
+git clone <sandbox-repo-url> my-workspace && cd my-workspace
 git clone <working-repo-url> my-repo
 echo '/my-repo/' >> .git/info/exclude
 git status                                  # my-repo must not show up
@@ -127,8 +127,8 @@ Put the layer where it is versioned with the project, not in this repo.
 A working repo is a good place, e.g. an umbrella/meta repo of the project:
 
 ```bash
-cp -r .devcontainer/project-template my-repo/ai-envelope
-ln -s ../my-repo/ai-envelope .devcontainer/project
+cp -r .devcontainer/project-template my-repo/ai-sandbox
+ln -s ../my-repo/ai-sandbox .devcontainer/project
 ```
 
 (Just trying something out? `ln -s project-template .devcontainer/project`
@@ -143,8 +143,8 @@ what's missing). For Copilot, create the token as described in
 
 ### 3. Name the compose project
 
-In `compose.yml`, set `name:` (e.g. `ai-envelope-myproject`). The containers
-are then called `ai-envelope-myproject-devcontainer-1` and `…-proxy-1`, and
+In `compose.yml`, set `name:` (e.g. `ai-sandbox-myproject`). The containers
+are then called `ai-sandbox-myproject-devcontainer-1` and `…-proxy-1`, and
 several projects can run side by side.
 
 ### 4. Declare required repos and host files (`prereqs`)
@@ -201,7 +201,7 @@ file must exist, even if it only has comments.
 ### 8. Add project AI instructions
 
 Put repo-specific rules into the working repos themselves (`AGENTS.md`,
-`CLAUDE.md`, …), not into the envelope. [`AGENTS.md`](AGENTS.md) tells the
+`CLAUDE.md`, …), not into the sandbox repo. [`AGENTS.md`](AGENTS.md) tells the
 agent to follow them.
 
 ### 9. Start and verify
@@ -218,13 +218,13 @@ devcontainer up --workspace-folder .
 ### 10. Commit the layer
 
 Commit the layer in its own repo (e.g. `my-repo`), following that repo's
-rules. Never commit it to the envelope. Write down any extra host prerequisites
+rules. Never commit it to the sandbox repo. Write down any extra host prerequisites
 (e.g. `~/.build-secrets/`) in the layer's `README.md`.
 
 ## Ignoring working repos
 
 Working repos are ignored through `.git/info/exclude`, not `.gitignore`. This
-keeps the envelope free of project-specific names, but the file is local to
+keeps the sandbox repo free of project-specific names, but the file is local to
 each clone, so set it up after cloning:
 
 ```bash
@@ -232,9 +232,28 @@ echo '/my-repo/' >> .git/info/exclude
 git status    # the working repos must not show up
 ```
 
-Run git commands from inside the respective directory: the envelope root for
+Run git commands from inside the respective directory: the workspace root for
 setup changes, a working repo for project changes. Never commit project changes
-to the envelope, or setup changes to a working repo.
+to the sandbox repo, or setup changes to a working repo.
+
+## Renamed from ai-envelope
+
+This repo used to be `ai-tool-setting`, with everything inside named
+`ai-envelope`. To move an existing setup over:
+
+1. Stop the running sandbox **before** changing anything, while compose still
+   finds it under the old name: `.devcontainer/compose.sh down`.
+2. Move the host files (tokens, ntfy topic, sandbox CA):
+   `mv ~/.config/ai-envelope ~/.config/ai-sandbox`. `initialize.sh` stops with
+   this hint as long as only the old directory exists.
+3. In your project layer's `compose.yml`, rename `name: ai-envelope-<project>`
+   to `ai-sandbox-<project>` (optional, but containers and the shell-history
+   volume are named after it; the old volume is not carried over).
+4. Point your clone at the new URL:
+   `git remote set-url origin https://github.com/gisbertpta/ai-sandbox.git`
+   (GitHub redirects the old one, so this can wait).
+5. Rebuild. Afterwards remove the old images:
+   `docker images --format '{{.Repository}}:{{.Tag}}' 'ai-envelope-*' | xargs -r docker rmi`.
 
 ## Security notes
 

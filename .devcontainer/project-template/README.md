@@ -20,4 +20,4 @@ domains.
 | `claude-settings.json` | Optional. Project-specific Claude managed settings (deny rules, hooks, attribution), merged over the module's generic ones. Strict JSON. See [Claude settings](../modules/README.md#claude-settings). |
 | `dummies/` | Placeholder copies of masked paths, mirroring the path: `dummies/<repo>/<path>`. |
 
-See "Starting a new project" in the envelope's [README](../../README.md).
+See "Starting a new project" in the sandbox repo's [README](../../README.md).
