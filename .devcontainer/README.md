@@ -87,6 +87,7 @@ network, so e.g. `uv sync` against a private index works during the build.
 | `devcontainer.json` | Entry point for VS Code. Runs `initialize.sh`, loads the compose files, sets the user and extensions. |
 | `docker-compose.yml` | **The generic config:** build, mounts, capabilities, networks, proxy env. |
 | `initialize.sh` | Runs on the host before start: checks the slot and prerequisites, builds base + module images, generates `.generated/`. |
+| `tests/sandbox-test.sh` | End-to-end test of masks and read-only protection (see [Testing](#testing)). |
 | `protected-paths` | Paths in every working repo (and the envelope root) that host tools run by themselves; mounted read-only. |
 | `compose.sh` | `docker compose` with all compose files. Use it instead of bare `docker compose`. |
 | `base/Dockerfile` | Generic image: Node, zsh, vim, git, rg, fd, jq, fzf, shellcheck, python3, uv, `dev` user. No agent CLI. |
@@ -365,6 +366,30 @@ of writing it in place, the container keeps seeing the old version until it is
 restarted.
 
 ---
+
+## Testing
+
+CI (`.github/workflows/ci.yml`) runs on every push to `main` and every pull
+request:
+
+| Job | What |
+|---|---|
+| `lint` | `shellcheck -S warning` on all `*.sh`, strict JSON check (managed settings) |
+| `cred-gw` | The policy unit tests, in `python:3.11-slim` like the cred-gw image |
+| `sandbox` | `tests/sandbox-test.sh`: builds the images, starts the devcontainer in a throwaway workspace with fake repos and a project layer, and checks that masks hold, protected paths can't be changed or renamed away, normal git work still works, and the next start warns about new paths |
+
+Run the end-to-end test on the host after changing `initialize.sh`, the compose
+files or the protection:
+
+```bash
+bash .devcontainer/tests/sandbox-test.sh             # rebuilds (and retags) the ai-envelope-* images
+NO_BUILD=1 bash .devcontainer/tests/sandbox-test.sh  # uses the images you have
+```
+
+It uses its own compose project (`sandbox-test`) and a temp directory, and
+removes both afterwards; your containers and working repos are not touched.
+With `NO_BUILD=1`, it tests the current scripts against your existing images, so
+image changes (base, modules) are only covered by a full run.
 
 ## Security notes & known gaps
 
