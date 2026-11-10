@@ -8,8 +8,8 @@ import unittest
 from core import Denied
 from gitlab_policy import API, GitLabPolicy, GitLabService, gitlab_auth, plan_request, pushed_refs
 
-CODE = 'grp/sub/ki-zfw-wm-code'
-LIB = 'grp/allgemein/daktools'
+CODE = 'grp/sub/example-code'
+LIB = 'grp/shared/tools'
 POLICY = GitLabPolicy(
     read_projects=frozenset({LIB, CODE}),
     write_projects=frozenset({CODE}),
@@ -75,7 +75,7 @@ class GitTest(unittest.TestCase):
         for method, path, query in (
             ('GET', f'/{CODE}.git/info/refs', ''),
             ('GET', f'/{CODE}.git/HEAD', ''),
-            ('GET', f'/{CODE}/../../allgemein/daktools.git/info/refs', 'service=git-upload-pack'),
+            ('GET', f'/{CODE}/../../shared/tools.git/info/refs', 'service=git-upload-pack'),
             ('GET', f'/{CODE}.git/%2e%2e/info/refs', 'service=git-upload-pack'),
         ):
             with self.subTest(path=path), self.assertRaises(Denied):
@@ -90,7 +90,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(needs('GET', f'{API}/user'), ())
 
     def test_user_lookup_by_exact_username(self) -> None:
-        for query in ('username=dak.annika.boer', 'username=u033037&per_page=100&page=1'):
+        for query in ('username=jane.doe', 'username=u123456&per_page=100&page=1'):
             with self.subTest(query=query):
                 self.assertEqual(plan_request(POLICY, 'GET', f'{API}/users', query, '', None).query, query)
         for method, path, query in (
@@ -116,7 +116,7 @@ class ApiTest(unittest.TestCase):
             ('GET', f'{API}/projects'),
             ('GET', f'{API}/groups/1/projects'),
             ('POST', '/api/graphql'),
-            ('GET', '/grp/sub/ki-zfw-wm-code/-/blob/develop/README.md'),
+            ('GET', '/grp/sub/example-code/-/blob/develop/README.md'),
             ('GET', f'{API}/projects/42/repository/files/a%2F..%2Fb'),
         ):
             with self.subTest(path=path), self.assertRaises(Denied):
@@ -163,7 +163,7 @@ class FakeGitLab:
 class ServiceTest(unittest.TestCase):
     def setUp(self) -> None:
         self.service = GitLabService('git.test', POLICY)
-        self.upstream = FakeGitLab({'42': 'Grp/Sub/ki-zfw-wm-code', '43': LIB, '44': 'grp/other/secret-project'})
+        self.upstream = FakeGitLab({'42': 'Grp/Sub/example-code', '43': LIB, '44': 'grp/other/secret-project'})
 
     def authorize(self, method: str, path: str, query: str = '', body: bytes | None = None) -> str:
         return self.service.authorize(method, path, query, {'Content-Type': 'application/json'}, body, self.upstream)  # type: ignore[arg-type]

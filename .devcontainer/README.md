@@ -96,7 +96,6 @@ network, so e.g. `uv sync` against a private index works during the build.
 | `.generated/` | Not tracked: written by `initialize.sh` from the enabled modules. |
 | `proxy/` | Squid egress proxy: `Dockerfile`, `squid.conf`, generic `allowlist.txt`. |
 | `project-template/` | Template for new project layers. |
-| `project-ki-zfw-wm/` | Current project layer (temporary, will move out). |
 | `project` | **Slot**, not tracked: symlink to (or copy of) the active project layer. |
 
 A project layer contains `compose.yml`, `Dockerfile`, `Dockerfile.dockerignore`,

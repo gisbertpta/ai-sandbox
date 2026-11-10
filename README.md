@@ -25,7 +25,6 @@ in a separate **project layer** that is plugged into a fixed slot.
 │   ├── proxy/                    squid egress proxy + generic allowlist
 │   ├── .generated/               written by initialize.sh (not tracked)
 │   ├── project-template/         template for new project layers
-│   ├── project-ki-zfw-wm/        current project layer (temporary, will move out)
 │   └── project  ──symlink──►     SLOT: the active project layer (not tracked)
 ├── .dockerignore                 safety net for the build context (excludes everything)
 ├── .gitignore                    ignores the slot and .generated/
@@ -88,7 +87,6 @@ The sandbox itself (how it works, debugging, security notes) is described in
    `.devcontainer/`:
    ```bash
    ln -s ../<umbrella-repo>/ai-envelope .devcontainer/project   # layer lives in a working repo
-   ln -s project-ki-zfw-wm .devcontainer/project                # current layer (temporary)
    ```
 3. Create the host prerequisites: the generic ones in
    [`.devcontainer/README.md`](.devcontainer/README.md#prerequisites-host), plus
@@ -184,7 +182,7 @@ hooks, and so on. The template `Dockerfile` has commented examples for each.
 - Private package indexes and git need credentials during the build: declare
   BuildKit secrets in `compose.yml` and use them with
   `RUN --mount=type=secret,...`. They never end up in the image. The
-  `project-ki-zfw-wm` layer is a working example.
+  template's `compose.yml` and `Dockerfile` show commented examples.
 
 ### 7. Allow extra domains (`allowlist.txt`)
 
@@ -231,13 +229,7 @@ Run git commands from inside the respective directory: the envelope root for
 setup changes, a working repo for project changes. Never commit project changes
 to the envelope, or setup changes to a working repo.
 
-## Current state
-
-The ki-zfw-wm project layer still lives in this repo as
-[`.devcontainer/project-ki-zfw-wm/`](.devcontainer/project-ki-zfw-wm/) and will
-move into the project later (planned: `ki-zfw-wm-umbrella`). After the move,
-re-point the slot symlink and delete
-the folder here.
+## Security notes
 
 What the sandbox protects against, and what not (VS Code host channels,
 tokens readable by the agent, allowlisted domains as exfiltration channels),

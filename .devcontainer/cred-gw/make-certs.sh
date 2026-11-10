@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # make-certs.sh — creates the sandbox CA and the cred-gw certificate on the host (once; existing files are kept).
 #
-#   bash .devcontainer/cred-gw/make-certs.sh [host ...]     default: jira.bitmarck.de git.bitmarck.de
+#   bash .devcontainer/cred-gw/make-certs.sh <host> [host ...]     e.g. jira.example.com git.example.com
+#
+# The hosts are the upstream Jira/GitLab names the devcontainer uses; cred-gw answers for them.
 #
 # Layout under ~/.config/ai-envelope/sandbox-ca/ (outside the workspace; the devcontainer must not read the keys):
 #   public/ca.crt          trusted by the devcontainer image (build context 'sandbox-ca')
@@ -10,7 +12,8 @@
 set -euo pipefail
 
 dir="${HOME}/.config/ai-envelope/sandbox-ca"
-if [ $# -gt 0 ]; then hosts=("$@"); else hosts=(jira.bitmarck.de git.bitmarck.de); fi
+if [ $# -eq 0 ]; then echo "usage: $0 <host> [host ...]   (e.g. jira.example.com git.example.com)" >&2; exit 1; fi
+hosts=("$@")
 mkdir -p "$dir/public" "$dir/private" "$dir/cred-gw"
 chmod 700 "$dir/private" "$dir/cred-gw"
 

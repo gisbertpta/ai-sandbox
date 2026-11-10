@@ -1,4 +1,4 @@
-# Devcontainer compose cheat sheet (ai-envelope / ki-zfw-wm)
+# Devcontainer compose cheat sheet (ai-envelope)
 
 All commands run **on the host**, from the repo root (the folder containing `.devcontainer/`).
 Not from inside the devcontainer: it has no Docker access and mounts `.devcontainer/` read-only.
@@ -10,7 +10,8 @@ Not from inside the devcontainer: it has no Docker access and mounts `.devcontai
   A bare `docker compose` only sees part of the config and gets the project name wrong.
 - **Start** via VS Code or `devcontainer up`, not `compose.sh up`. Only those run `initialize.sh`
   (base/module images, `.generated/`) and `check-exclusions`.
-- Compose project name: `ai-envelope-ki-zfw-wm` (from `name:` in `project/compose.yml`).
+- Compose project name: whatever `name:` in `project/compose.yml` says, e.g. `ai-envelope-myproject`.
+  Below, `<name>` stands for it; containers are called `<name>-devcontainer-1`, `<name>-proxy-1`, ….
 - Services: `devcontainer`, `proxy` (squid egress allowlist), `cred-gw` (Jira/GitLab token gateway).
 - `.generated/compose.yml` missing → `bash .devcontainer/initialize.sh` once.
 
@@ -40,7 +41,7 @@ Not from inside the devcontainer: it has no Docker access and mounts `.devcontai
 | Follow proxy log (blocked domains) | `.devcontainer/compose.sh logs -f proxy` |
 | Follow cred-gw log | `.devcontainer/compose.sh logs -f cred-gw` |
 | Last 100 lines, all services | `.devcontainer/compose.sh logs --tail 100` |
-| Resource usage | `docker stats` (filter by `ai-envelope-ki-zfw-wm-`) |
+| Resource usage | `docker stats` (filter by `<name>-`) |
 | Images built for this project | `.devcontainer/compose.sh images` |
 
 Proxy log hint: `TCP_DENIED/403 CONNECT some.domain:443` → domain is not on an allowlist.
@@ -53,7 +54,7 @@ Proxy log hint: `TCP_DENIED/403 CONNECT some.domain:443` → domain is not on an
 | Only validate, no output | `.devcontainer/compose.sh config -q` |
 | List services | `.devcontainer/compose.sh config --services` |
 | List volumes | `.devcontainer/compose.sh config --volumes` |
-| Networks of the devcontainer | `docker inspect ai-envelope-ki-zfw-wm-devcontainer-1 --format '{{json .NetworkSettings.Networks}}'` |
+| Networks of the devcontainer | `docker inspect <name>-devcontainer-1 --format '{{json .NetworkSettings.Networks}}'` |
 
 `config` prints resolved paths and environment; it shows no secret contents, but don't paste
 it anywhere public anyway.
@@ -87,7 +88,7 @@ token file; `--force-recreate` does.
 | Shell in devcontainer as `dev` (via compose) | `.devcontainer/compose.sh exec -u dev devcontainer zsh` |
 | Shell in proxy | `.devcontainer/compose.sh exec proxy sh` |
 | One-off command, container removed after | `.devcontainer/compose.sh run --rm <service> <cmd>` |
-| Copy a file out of the devcontainer | `docker cp ai-envelope-ki-zfw-wm-devcontainer-1:/path ./local` |
+| Copy a file out of the devcontainer | `docker cp <name>-devcontainer-1:/path ./local` |
 
 Without `-u dev`, `exec` runs as root. Prefer `devcontainer exec`; it also applies `remoteEnv`.
 
