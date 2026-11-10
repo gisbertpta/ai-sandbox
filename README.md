@@ -22,6 +22,7 @@ in a separate **project layer** that is plugged into a fixed slot.
 │   ├── modules/                  agent CLIs, each with Dockerfile, allowlist, mounts
 │   │   ├── claude/               Claude Code (+ managed settings, Stop hook)
 │   │   ├── copilot/              GitHub Copilot CLI
+│   │   ├── cred-gw/              opt-in: Jira/GitLab credential gateway (own service)
 │   │   └── ntfy/                 opt-in: Stop-hook notification via ntfy.sh
 │   ├── proxy/                    squid egress proxy + generic allowlist
 │   ├── tests/                    end-to-end sandbox test (also run in CI)
@@ -44,7 +45,7 @@ in a separate **project layer** that is plugged into a fixed slot.
 | | Base (this repo) | Agent modules (this repo, `modules/<name>/`) | Project layer (slot `.devcontainer/project`) |
 |---|---|---|---|
 | Image | `base/Dockerfile` → `ai-envelope-base:latest`: Node, CLI tools, uv, `dev` user, exclusion check | `Dockerfile` per module, stacked: install the CLI behind a wrapper that runs the exclusion check | `Dockerfile` `FROM` the last module image: system libs, CA certs, Python version, dependencies, pre-commit hooks |
-| Compose | sandbox/egress networks, proxy, capabilities, proxy env, `~/.gitconfig` mount | `mounts` (agent home, token) | compose `name`, masking mounts, build secrets, env vars |
+| Compose | sandbox/egress networks, proxy, capabilities, proxy env, `~/.gitconfig` mount | `mounts` (agent home, token), `compose.yml` (own services, e.g. `cred-gw`), `configure` (hosts, networks) | compose `name`, masking mounts, build secrets, env vars |
 | Selection | always | `modules` file in the project layer (default: `claude`) | the slot symlink |
 | Build context filter | `.dockerignore` (excludes everything) | the module folder | `Dockerfile.dockerignore` (allowlist of files to `COPY`) |
 | Secret masking | `check-exclusions` (the mechanism) | | `excluded-files` + `dummies/` (the paths) |

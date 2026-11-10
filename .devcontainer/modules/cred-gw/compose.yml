@@ -1,0 +1,47 @@
+# Module cred-gw: the gateway service. Included by .generated/compose.yml
+# (initialize.sh). Relative paths resolve against this folder.
+# ${CRED_GW_SUBNET} and ${CRED_GW_IP} come from .generated/cred-gw.env, written
+# by 'configure' from the project's cred-gw.env (default 172.30.99.0/28, .10).
+#
+# The devcontainer reaches the gateway on the internal 'cred-gw' network: the
+# upstream host names resolve to ${CRED_GW_IP} there (extra_hosts) and bypass
+# the proxy (NO_PROXY), both set by initialize.sh. Only the gateway can reach
+# the upstream (network 'cred-gw-egress') and only it holds the tokens.
+
+services:
+  cred-gw:
+    build:
+      context: ./gateway
+    # Policy: upstream URLs, label, projects, ... (see cred-gw.env.example)
+    env_file:
+      - ../../project/cred-gw.env
+    environment:
+      CRED_GW_TLS_CERT: /run/cred-gw/tls/tls.crt
+      CRED_GW_TLS_KEY: /run/cred-gw/tls/tls.key
+      JIRA_GW_TOKEN_FILE: /run/cred-gw/tokens/jira-token
+      GITLAB_GW_TOKEN_FILE: /run/cred-gw/tokens/gitlab-token
+    volumes:
+      # Only the gateway's own files: its tokens and its TLS key (not the CA key)
+      - ${HOME}/.config/ai-envelope/cred-gw:/run/cred-gw/tokens:ro
+      - ${HOME}/.config/ai-envelope/sandbox-ca/cred-gw:/run/cred-gw/tls:ro
+      # The project layer, e.g. for CRED_GW_UPSTREAM_CA=/run/cred-gw/project/upstream-ca.crt
+      - ../../project:/run/cred-gw/project:ro
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    networks:
+      cred-gw:
+        ipv4_address: ${CRED_GW_IP}
+      cred-gw-egress: {}
+    restart: unless-stopped
+
+networks:
+  # internal: the devcontainer and the gateway only
+  cred-gw:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${CRED_GW_SUBNET}
+  cred-gw-egress: {}

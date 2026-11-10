@@ -9,6 +9,7 @@ line). Without that file, you get `claude` only.
 | `claude` | `claude` | Claude login inside the sandbox, state in host `~/.claude-devcontainer` + `~/.claude-devcontainer.json` (not your host `~/.claude`) |
 | `copilot` | `copilot` | Fine-grained PAT from a host file (see [below](#copilot-token)) |
 | `ntfy` | – | No image changes: allowlists `ntfy.sh` and mounts a random topic for the Claude Stop hook (see [below](#ntfy-notifications)) |
+| `cred-gw` | – (`git`, `glab`, `curl`, … against Jira/GitLab) | Jira/GitLab tokens stay in a separate gateway container that enforces the project's rules (see [below](#cred-gw-credential-gateway)) |
 
 ## What a module contains
 
@@ -18,6 +19,9 @@ line). Without that file, you get `claude` only.
 | `allowlist.txt` | no | Proxy domains the CLI needs. |
 | `mounts` | no | Volumes for the devcontainer service, one compose short-syntax entry per line. `${HOME}` is allowed; relative paths resolve against `.devcontainer/`. |
 | `prereqs` | no | Host paths that must exist: `<file\|dir> <path> <hint>` (relative paths: workspace root). `initialize.sh` fails with the hint if one is missing. Every mount source belongs here, otherwise Docker creates a directory in its place. |
+| `build-contexts` | no | Named build contexts for the `Dockerfile`: `<name> <host dir>` per line, used as `COPY --from=<name>`. For files outside the module folder (e.g. the sandbox CA certificate). |
+| `compose.yml` | no | Own services and networks (e.g. the `cred-gw` service), included into the compose stack via `include:`. It can't change the `devcontainer` service; that's what `configure` is for. Relative paths resolve against the module folder. Needs Docker Compose 2.20 or later. |
+| `configure` | no | Host-side hook, run after the prereqs are checked (cwd `.devcontainer/`). Reads the project's settings for the module, checks them and prints what the devcontainer needs, one per line: `network <name>`, `extra_host <host> <ip>`, `no_proxy <host>`. May write the values its `compose.yml` interpolates to `$MODULE_ENV`. A non-zero exit stops the start. |
 
 ## How they are joined
 
@@ -29,7 +33,9 @@ line). Without that file, you get `claude` only.
    `ai-envelope-mod-claude-copilot` → … The tag names the whole chain, so
    projects with different module sets don't overwrite each other.
 4. Generates `.devcontainer/.generated/` (gitignored):
-   - `compose.yml`: compose override with `BASE_IMAGE` (the last chain image),
+   - `compose.yml`: `include:` of the modules' `compose.yml`, and the compose
+     override with `BASE_IMAGE` (the last chain image), what the `configure`
+     hooks asked for,
      all module mounts, and the read-only protection (`.git/config`,
      `.git/hooks`, `protected-paths`). It is merged between `docker-compose.yml` and `project/compose.yml`.
    - `allowlist-modules.txt`: all module allowlists, read by the proxy.
@@ -87,6 +93,83 @@ Bypass-permissions mode comes from the `claude` wrapper
 (`--dangerously-skip-permissions`); auto-update is off (`DISABLE_AUTOUPDATER=1`),
 updates come with `NO_CACHE=1 initialize.sh`. After changing either settings
 file, rebuild the container.
+
+## cred-gw (credential gateway)
+
+Lets the agent use Jira and GitLab without ever holding a token. The gateway
+is a separate container with the tokens; the agent's requests reach it under
+the real host names and it applies the project's rules before it adds the
+token and forwards them:
+
+- **Jira:** reads only issues with the project's label (plus the metadata of
+  the listed projects); writes (edit, comment, transition, create) only when
+  enabled.
+- **GitLab:** fetch and API reads only for the listed projects; push and merge
+  requests only for the write projects, and only to matching branches (default
+  `feature/`, `fix/`, `bugfix/`, `chore/`, `docs/`, `refactor/`, `test/`).
+
+How it works: inside the devcontainer, `jira.example.com` resolves to the
+gateway (`extra_hosts`) and is in `NO_PROXY`, so `git`, `glab` or `curl` connect
+to it directly on the internal `cred-gw` network. The gateway serves a
+certificate from the sandbox CA for those names, which the module's image layer
+trusts. Only the gateway can reach the real hosts, and only it has the tokens
+and the TLS key. Everything else still goes through the proxy.
+
+| File | Purpose |
+|---|---|
+| `gateway/` | The gateway: `server.py` (HTTPS front, routing by host), `jira_policy.py`, `gitlab_policy.py`, their tests, `Dockerfile` |
+| `compose.yml` | The `cred-gw` service and its networks |
+| `Dockerfile` + `build-contexts` | Devcontainer layer: trusts the sandbox CA |
+| `configure` | Reads the project's `cred-gw.env`, checks tokens and certificate, sets `extra_hosts`/`NO_PROXY` |
+| `make-certs.sh` | Creates the sandbox CA and the gateway certificate on the host |
+| `cred-gw.env.example` | Template for the project layer's `cred-gw.env` |
+
+### Setup
+
+1. Enable the module in the project layer's `modules` (next to `claude`) and
+   copy the policy template into the layer:
+   ```bash
+   cp .devcontainer/modules/cred-gw/cred-gw.env.example <project layer>/cred-gw.env
+   ```
+   Fill it in: upstream URLs, Jira label and projects, GitLab read/write
+   projects. A service is on when its `*_GW_UPSTREAM` is set.
+2. Store the tokens on the host, one file per service you configured. Use
+   tokens with the smallest scope that works (Jira: a personal access token of
+   a user who can see the project; GitLab: `api` + `read_repository` +
+   `write_repository` only if pushing is enabled):
+   ```bash
+   mkdir -p ~/.config/ai-envelope/cred-gw && chmod 700 ~/.config/ai-envelope/cred-gw
+   (umask 077; read -rs -p 'Jira token: ' t && printf '%s\n' "$t" > ~/.config/ai-envelope/cred-gw/jira-token)
+   (umask 077; read -rs -p 'GitLab token: ' t && printf '%s\n' "$t" > ~/.config/ai-envelope/cred-gw/gitlab-token)
+   ```
+3. Create the sandbox CA and the gateway certificate for the upstream hosts:
+   ```bash
+   bash .devcontainer/modules/cred-gw/make-certs.sh jira.example.com gitlab.example.com
+   ```
+   Existing files are kept. To add a host later, delete
+   `~/.config/ai-envelope/sandbox-ca/cred-gw/tls.*` and run it again with all
+   hosts (the CA stays, so no image rebuild is needed for the trust).
+4. If the upstream uses a company CA, put its bundle into the project layer and
+   set `CRED_GW_UPSTREAM_CA=/run/cred-gw/project/<file>` in `cred-gw.env`.
+5. Rebuild the container. `initialize.sh` prints `[cred-gw] Gateway 172.30.99.10
+   for ...`; `.devcontainer/compose.sh logs -f cred-gw` shows every decision
+   (`pass`/`deny`, host, method, path; never bodies or query strings).
+
+Inside the container, point the tools at the real host names as usual, e.g.
+`git clone https://gitlab.example.com/group/my-repo.git`. Git asks for no
+password: the gateway adds the token. A refused push shows up in git's output
+as `! [remote rejected] ... (cred-gw: ...)`.
+
+**Several projects at once:** each project with cred-gw needs its own subnet:
+set `CRED_GW_SUBNET` in `cred-gw.env` (default `172.30.99.0/28`).
+
+**Migrating from an older setup** (cred-gw wired in the project layer's
+`compose.yml`, tokens in `~/.config/ai-envelope/{jira,gitlab}-token`): remove
+the `cred-gw` service, its networks, `extra_hosts`, `NO_PROXY` and the
+`sandbox-ca` build context from the layer, move the `*_GW_*` environment
+variables into `cred-gw.env`, and move the tokens:
+`mkdir -p ~/.config/ai-envelope/cred-gw && mv ~/.config/ai-envelope/{jira,gitlab}-token ~/.config/ai-envelope/cred-gw/`.
+The certificates in `~/.config/ai-envelope/sandbox-ca/` stay where they are.
 
 ## ntfy notifications
 

@@ -12,7 +12,8 @@ Not from inside the devcontainer: it has no Docker access and mounts `.devcontai
   (base/module images, `.generated/`) and `check-exclusions`.
 - Compose project name: whatever `name:` in `project/compose.yml` says, e.g. `ai-envelope-myproject`.
   Below, `<name>` stands for it; containers are called `<name>-devcontainer-1`, `<name>-proxy-1`, ….
-- Services: `devcontainer`, `proxy` (squid egress allowlist), `cred-gw` (Jira/GitLab token gateway).
+- Services: `devcontainer`, `proxy` (squid egress allowlist), and `cred-gw` (Jira/GitLab token gateway)
+  when the project enables the `cred-gw` module.
 - `.generated/compose.yml` missing → `bash .devcontainer/initialize.sh` once.
 
 ## Start, stop, rebuild
@@ -74,9 +75,10 @@ changes need `build proxy` + `up -d --no-deps proxy`.
 
 | Task | Command |
 | --- | --- |
-| After editing `cred-gw/*.py` or policy env in `project/compose.yml` | `.devcontainer/compose.sh up -d --no-deps --build cred-gw` |
-| After rotating `~/.config/ai-envelope/{jira,gitlab}-token` | `.devcontainer/compose.sh up -d --no-deps --force-recreate cred-gw` |
-| Run the policy tests (host, stdlib only; tests are not in the image) | `cd .devcontainer/cred-gw && python3 -m unittest -v` |
+| After editing `modules/cred-gw/gateway/*.py` or the policy in `project/cred-gw.env` | `.devcontainer/compose.sh up -d --no-deps --build cred-gw` |
+| After changing an upstream host in `project/cred-gw.env` | rebuild the devcontainer (host names go into its `extra_hosts`/`NO_PROXY`) |
+| After rotating `~/.config/ai-envelope/cred-gw/{jira,gitlab}-token` | `.devcontainer/compose.sh up -d --no-deps --force-recreate cred-gw` |
+| Run the policy tests (host, stdlib only; tests are not in the image) | `cd .devcontainer/modules/cred-gw/gateway && python3 -m unittest -v` |
 
 Secrets are read when the container is created, so a plain `restart` may not pick up a new
 token file; `--force-recreate` does.
@@ -120,10 +122,10 @@ container and image on the host, not just this project.
 | --- | --- |
 | `pull access denied for ai-envelope-base` / `ai-envelope-mod-…` | `bash .devcontainer/initialize.sh` |
 | `.generated/compose.yml missing` | `bash .devcontainer/initialize.sh` |
-| `secret …: file not found` | check `~/.build-secrets/*`, `~/.config/ai-envelope/*-token` exist on host |
+| `secret …: file not found` | check `~/.build-secrets/*` exist on host |
 | Mounted path is a directory instead of a file | create the host file (e.g. `echo '{}' > ~/.claude-devcontainer.json`), then rebuild |
 | Network blocked inside container | `.devcontainer/compose.sh logs -f proxy` |
 | Proxy won't start | `.devcontainer/compose.sh logs proxy`, then `squid -k parse` (see above) |
 | Jira/GitLab calls fail | `.devcontainer/compose.sh logs -f cred-gw` |
-| Subnet `172.30.99.0/24` collides | in `project/compose.yml` change `networks.sandbox.ipam`, the `cred-gw` `ipv4_address` and both `extra_hosts` IPs together; `down`, start again |
+| `Pool overlaps with other one` (cred-gw network) | set another `CRED_GW_SUBNET` in `project/cred-gw.env` (e.g. `172.30.98.0/28`); `down`, start again |
 | Masked-file check shows WARN | compare volumes in `project/compose.yml` with `project/excluded-files`, rebuild |

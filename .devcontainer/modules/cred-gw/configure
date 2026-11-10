@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# configure — host-side hook of the cred-gw module, run by initialize.sh (cwd:
+# .devcontainer/) after the prerequisites are checked.
+#
+# Reads the project's cred-gw.env (as data, never as shell code), checks that
+# every configured service has its token and that the certificate covers its
+# host, writes the values compose.yml interpolates to $MODULE_ENV, and prints
+# what the devcontainer needs, one per line (see modules/README.md "Hooks"):
+#   network <name>             join this network (defined in compose.yml)
+#   extra_host <host> <ip>     resolve <host> to <ip>
+#   no_proxy <host>            connect to <host> directly, not via the proxy
+# Messages go to stderr; a non-zero exit stops the start.
+
+set -euo pipefail
+
+CONF=project/cred-gw.env
+TOKENS="$HOME/.config/ai-envelope/cred-gw"
+TLS_CERT="$HOME/.config/ai-envelope/sandbox-ca/cred-gw/tls.crt"
+FAIL=0
+err() { echo "[cred-gw] ERROR: $*" >&2; FAIL=1; }
+
+# value KEY: the last KEY=... in the env file, surrounding quotes removed
+value() {
+  sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$CONF" | tail -n 1 \
+    | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
+}
+
+# ── Services: host names and tokens ───────────────────────────────────────────
+HOSTS=()
+for svc in jira gitlab; do
+  var="$(tr '[:lower:]' '[:upper:]' <<< "$svc")_GW_UPSTREAM"
+  url="$(value "$var")"
+  [ -n "$url" ] || continue
+  if [[ ! "$url" =~ ^https://([A-Za-z0-9.-]+)(/.*)?$ ]]; then
+    err "$var must be https://<host>[/path] without a port (the gateway listens on 443): $url"
+    continue
+  fi
+  HOSTS+=("${BASH_REMATCH[1],,}")
+  if [ ! -s "$TOKENS/$svc-token" ]; then
+    err "$svc is configured, but $TOKENS/$svc-token is missing or empty."
+    echo "        (umask 077; read -rs -p 'Token: ' t && printf '%s\\n' \"\$t\" > $TOKENS/$svc-token)" >&2
+  fi
+done
+[ ${#HOSTS[@]} -gt 0 ] || err "no service configured in the project's cred-gw.env (set JIRA_GW_UPSTREAM and/or GITLAB_GW_UPSTREAM)."
+if [ -n "$(value JIRA_GW_UPSTREAM)" ] && [ -z "$(value JIRA_GW_LABEL)" ]; then
+  err "JIRA_GW_LABEL must be set when Jira is configured."
+fi
+
+# ── Certificate: must name every upstream host ────────────────────────────────
+if [ ${#HOSTS[@]} -gt 0 ] && [ -f "$TLS_CERT" ]; then
+  if command -v openssl > /dev/null; then
+    san="$(openssl x509 -in "$TLS_CERT" -noout -ext subjectAltName 2>/dev/null || true)"
+    for h in "${HOSTS[@]}"; do
+      if ! grep -qiE "DNS:${h//./\\.}(,|$)" <<< "$san"; then
+        err "the cred-gw certificate does not cover ${h}. Create a new one (the CA is kept):"
+        echo "        rm ~/.config/ai-envelope/sandbox-ca/cred-gw/tls.* && bash .devcontainer/modules/cred-gw/make-certs.sh ${HOSTS[*]}" >&2
+        break
+      fi
+    done
+  else
+    echo "[cred-gw] WARNING: no openssl on the host; can't check that the certificate covers ${HOSTS[*]}." >&2
+  fi
+fi
+
+# ── Network ───────────────────────────────────────────────────────────────────
+subnet="$(value CRED_GW_SUBNET)"
+subnet="${subnet:-172.30.99.0/28}"
+if [[ "$subnet" =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.0/([0-9]{1,2})$ ]] \
+   && [ "${BASH_REMATCH[2]}" -ge 16 ] && [ "${BASH_REMATCH[2]}" -le 28 ]; then
+  ip="${BASH_REMATCH[1]}.10"
+else
+  err "CRED_GW_SUBNET must look like a.b.c.0/NN with NN between 16 and 28: $subnet"
+fi
+
+[ "$FAIL" -eq 0 ] || exit 1
+
+printf 'CRED_GW_SUBNET=%s\nCRED_GW_IP=%s\n' "$subnet" "$ip" > "$MODULE_ENV"
+echo "[cred-gw] Gateway ${ip} for ${HOSTS[*]}" >&2
+echo "network cred-gw"
+for h in "${HOSTS[@]}"; do
+  echo "extra_host $h $ip"
+  echo "no_proxy $h"
+done

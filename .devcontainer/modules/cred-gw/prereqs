@@ -1,0 +1,7 @@
+# Host paths that must exist before start: <file|dir> <path> <hint>
+# Which tokens and host names are needed depends on the project's cred-gw.env;
+# 'configure' checks those.
+file .devcontainer/project/cred-gw.env                 cp .devcontainer/modules/cred-gw/cred-gw.env.example <project layer>/cred-gw.env, then fill it in
+dir  ${HOME}/.config/ai-envelope/cred-gw               mkdir -p ~/.config/ai-envelope/cred-gw (token files: jira-token, gitlab-token; see modules/README.md)
+file ${HOME}/.config/ai-envelope/sandbox-ca/public/ca.crt  bash .devcontainer/modules/cred-gw/make-certs.sh <upstream hosts>
+file ${HOME}/.config/ai-envelope/sandbox-ca/cred-gw/tls.crt  bash .devcontainer/modules/cred-gw/make-certs.sh <upstream hosts>

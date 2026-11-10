@@ -16,6 +16,7 @@ domains.
 | `prereqs` | Optional. Repos and host files that must exist (`initialize.sh` checks them). List every repo whose secrets are masked. |
 | `modules` | Optional. Agent modules to install (`claude`, `copilot`, see `.devcontainer/modules/`). Missing → `claude` only. |
 | `protected-paths` | Optional. Adds paths to the generic `.devcontainer/protected-paths` (e.g. scripts a host-side hook calls), or drops one with `!path`. |
+| `cred-gw.env` | Only with the `cred-gw` module: its policy (upstream URLs, label, projects). Copy from `.devcontainer/modules/cred-gw/cred-gw.env.example`. |
 | `claude-settings.json` | Optional. Project-specific Claude managed settings (deny rules, hooks, attribution), merged over the module's generic ones. Strict JSON. See [Claude settings](../modules/README.md#claude-settings). |
 | `dummies/` | Placeholder copies of masked paths, mirroring the path: `dummies/<repo>/<path>`. |
 

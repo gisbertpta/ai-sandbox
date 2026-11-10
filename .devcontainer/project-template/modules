@@ -4,3 +4,4 @@
 claude
 # copilot
 # ntfy        # Claude Stop-hook notification via ntfy.sh (needs a topic file)
+# cred-gw     # Jira/GitLab credential gateway (needs cred-gw.env in this layer)

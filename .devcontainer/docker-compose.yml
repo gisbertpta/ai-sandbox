@@ -36,6 +36,8 @@ services:
       HTTP_PROXY: http://proxy:3128
       https_proxy: http://proxy:3128
       http_proxy: http://proxy:3128
+      # Modules may add hosts (e.g. cred-gw): .generated/compose.yml then repeats
+      # these entries first (initialize.sh), keep both in sync
       NO_PROXY: localhost,127.0.0.1
       no_proxy: localhost,127.0.0.1
     volumes:
