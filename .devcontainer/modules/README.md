@@ -42,24 +42,51 @@ project's `modules` file. Copy an existing module as a starting point.
 
 ## Claude settings
 
-Claude's sandbox settings are **managed settings** baked into the image
-(`claude/managed-settings.json` → `/etc/claude-code/managed-settings.json`):
-attribution off, Stop hook for ntfy, SDD guard and secret read block (below).
-Managed settings have the highest
-precedence, apply in every directory (also when Claude starts in a nested
-repo, where `/workspace/.claude/settings.json` would not be loaded), and are
-root-owned, so the agent can't change them. Bypass-permissions mode comes from
-the `claude` wrapper (`--dangerously-skip-permissions`); auto-update is off
-(`DISABLE_AUTOUPDATER=1`), updates come with `NO_CACHE=1 initialize.sh`.
+Claude's sandbox settings are **managed settings**, so they have the highest
+precedence, apply in every directory (also when Claude starts in a nested repo,
+where `/workspace/.claude/settings.json` would not be loaded), and the agent
+can't change them. Deny rules and hooks also apply in bypass-permissions mode.
+They come in two parts:
 
-**SDD guard.** A `PreToolUse` hook runs `scripts/agent/guards/check-command.sh`
-of a working repo before every `Bash`, `Monitor`, `Edit`, `Write` and `MultiEdit`
-call, if the repo has one (see the repo's `docs/sdd/onboarding.md`). It looks in
-the project dir and in every repo directly below it, so it also works when Claude
-starts in `/workspace`; each guard gets `CLAUDE_PROJECT_DIR` set to its own repo.
-Repos without a guard are not affected. `permissions.deny` blocks reading
-secret files (`.env`, `secrets.yml`, `build-secret/`, token files); deny rules
-and hooks also apply in bypass-permissions mode.
+| Part | File | Lands in the container as |
+|---|---|---|
+| Generic (this module) | `claude/managed-settings.json`, baked into the image, root-owned | `/etc/claude-code/managed-settings.json` |
+| Project (optional) | `claude-settings.json` in the project layer, mounted read-only by `initialize.sh` | `/etc/claude-code/managed-settings.d/50-project.json` |
+
+The generic part only holds what every project wants: the Stop hook for ntfy
+and a read block for `.env` files. Everything project-specific (more secret
+paths, hooks for the project's own guard scripts, attribution) goes into the
+project layer. Claude merges the drop-in over the generic file: single values
+are replaced, lists such as `permissions.deny` and `hooks` are combined.
+
+The project file must be strict JSON (no comments). `initialize.sh` checks it
+and refuses to start otherwise, because Claude itself would refuse to start.
+Example:
+
+```json
+{
+  "attribution": { "commit": "", "pr": "", "sessionUrl": false },
+  "permissions": {
+    "deny": ["Read(**/secrets.yml)", "Read(**/build-secret/**)", "Read(~/.jira_env)"]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit",
+        "hooks": [{ "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/agent/guards/check-command.sh", "timeout": 30 }]
+      }
+    ]
+  }
+}
+```
+
+`Read(...)` deny rules only stop Claude's Read tool, not `cat` in a Bash call.
+They prevent accidents; masking (`excluded-files`) is the actual protection.
+
+Bypass-permissions mode comes from the `claude` wrapper
+(`--dangerously-skip-permissions`); auto-update is off (`DISABLE_AUTOUPDATER=1`),
+updates come with `NO_CACHE=1 initialize.sh`. After changing either settings
+file, rebuild the container.
 
 ## ntfy notifications
 

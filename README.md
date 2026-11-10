@@ -45,6 +45,7 @@ in a separate **project layer** that is plugged into a fixed slot.
 | Selection | always | `modules` file in the project layer (default: `claude`) | the slot symlink |
 | Build context filter | `.dockerignore` (excludes everything) | the module folder | `Dockerfile.dockerignore` (allowlist of files to `COPY`) |
 | Secret masking | `check-exclusions` (the mechanism) | | `excluded-files` + `dummies/` (the paths) |
+| Claude settings | | `claude/managed-settings.json` (generic: Stop hook, `.env` read block) | `claude-settings.json` (optional: deny rules, hooks, attribution) |
 | Egress | `proxy/allowlist.txt` (VS Code) | `allowlist.txt` (agent API, e.g. Anthropic, Copilot) | `allowlist.txt` (extra domains) |
 | Host prerequisites | `~/.gitconfig` | `prereqs` (e.g. `~/.claude-devcontainer`, Copilot token) | `prereqs` (required repos, build secrets) |
 

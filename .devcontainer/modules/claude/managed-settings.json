@@ -1,34 +1,11 @@
 {
-  "attribution": {
-    "commit": "",
-    "pr": "",
-    "sessionUrl": false
-  },
   "permissions": {
     "deny": [
       "Read(**/.env)",
-      "Read(**/.env.*)",
-      "Read(**/secrets.yml)",
-      "Read(**/secret.yml)",
-      "Read(**/build-secret/**)",
-      "Read(~/.jira_env)",
-      "Read(~/.gitlab_env)",
-      "Read(~/.config/glab-cli/**)"
+      "Read(**/.env.*)"
     ]
   },
   "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash|Monitor|Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "input=$(cat); for g in \"$CLAUDE_PROJECT_DIR\"/scripts/agent/guards/check-command.sh \"$CLAUDE_PROJECT_DIR\"/*/scripts/agent/guards/check-command.sh; do [ -f \"$g\" ] || continue; printf '%s' \"$input\" | CLAUDE_PROJECT_DIR=\"${g%/scripts/agent/guards/check-command.sh}\" bash \"$g\" || exit $?; done",
-            "timeout": 30
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "hooks": [

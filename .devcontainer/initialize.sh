@@ -10,7 +10,8 @@
 # 5. Generates .generated/:
 #    compose.yml             module image as BASE_IMAGE, module mounts, read-only
 #                            .git/config + .git/hooks of every working repo and the
-#                            project layer (if it lives outside .devcontainer/)
+#                            project layer (if it lives outside .devcontainer/),
+#                            the project's Claude settings (project/claude-settings.json)
 #    allowlist-modules.txt   proxy allowlist of the modules
 #
 # NO_CACHE=1 bash .devcontainer/initialize.sh  rebuilds all images without cache
@@ -152,6 +153,23 @@ case "$layer" in
   *)       echo "[init] WARNING: project layer is outside the workspace; check-exclusions can't read it in the container." ;;
 esac
 
+# Project Claude settings: merged over the module's managed settings as a drop-in
+# (lists such as permissions.deny and hooks are combined). Read-only, so the agent
+# can't change them. Claude refuses to start on invalid JSON, so check it here,
+# with the jq of the image just built (the host may not have jq).
+if [ -f project/claude-settings.json ]; then
+  if [[ " ${MODULES[*]} " != *" claude "* ]]; then
+    echo "[init] WARNING: project/claude-settings.json is ignored: module 'claude' is not enabled."
+  elif ! docker run --rm -i --network none "$image" jq -e 'type == "object"' \
+         < project/claude-settings.json > /dev/null; then
+    echo "[init] ERROR: project/claude-settings.json must be a JSON object (strict JSON, no comments)."
+    exit 1
+  else
+    REPO_MOUNTS+=("./project/claude-settings.json:/etc/claude-code/managed-settings.d/50-project.json:ro")
+    echo "[init] Project Claude settings: claude-settings.json -> managed-settings.d/50-project.json"
+  fi
+fi
+
 mkdir -p "$GEN"
 rm -f "$GEN/modules.yml"   # pre-rename leftover
 {
@@ -167,7 +185,7 @@ rm -f "$GEN/modules.yml"   # pre-rename leftover
     strip "modules/$m/mounts" | sed -e "s|.*|      - \"&\"   # module $m|"
   done
   for v in "${REPO_MOUNTS[@]}"; do
-    echo "      - \"$v\"   # read-only protection"
+    echo "      - \"$v\"   # read-only"
   done
 } > "$GEN/compose.yml"
 # An empty 'volumes:' is invalid compose; drop it when nothing adds mounts

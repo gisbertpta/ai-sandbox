@@ -90,7 +90,7 @@ network, so e.g. `uv sync` against a private index works during the build.
 | `base/run-guarded.sh` | Installed as `run-guarded`. Runs the check, then the given command. Every agent wrapper calls it. |
 | `base/.zshrc` | Shell config for the `dev` user (vi mode, fzf, autosuggestions, syntax highlighting). |
 | `base/.vimrc` | Minimal vim config for the `dev` user. |
-| `modules/claude/` | Claude Code: install + wrapper (bypass mode), managed settings (attribution, Stop hook), allowlist, sandbox home mounts. |
+| `modules/claude/` | Claude Code: install + wrapper (bypass mode), generic managed settings (Stop hook, `.env` read block), allowlist, sandbox home mounts. |
 | `modules/copilot/` | GitHub Copilot CLI: install + wrapper, allowlist, token + state mounts. |
 | `modules/ntfy/` | Opt-in: allowlists `ntfy.sh` and mounts the topic for the Claude Stop hook. |
 | `.generated/` | Not tracked: written by `initialize.sh` from the enabled modules. |
@@ -324,9 +324,12 @@ WARN   my-repo/config  <-- not masked!
   `echo '{}' > ~/.claude-devcontainer.json`, rebuild.
 - Login fails → check the proxy log. Login and token refresh need `.anthropic.com`
   and `.claude.ai`.
-- Settings: attribution, the Stop hook and the SDD guard are managed settings in the image
-  (`modules/claude/managed-settings.json` → `/etc/claude-code/managed-settings.json`).
-  They apply in every directory, also in nested repos. Change them there and rebuild.
+- Settings are managed settings: the generic part in the image
+  (`modules/claude/managed-settings.json` → `/etc/claude-code/managed-settings.json`),
+  the project part from the layer's `claude-settings.json`
+  (→ `/etc/claude-code/managed-settings.d/50-project.json`). They apply in every
+  directory, also in nested repos. Change them there and rebuild; `/status` in
+  Claude shows `(file + drop-ins)` when both are loaded.
 
 ### Copilot asks for a login
 
@@ -370,7 +373,8 @@ restarted.
   planted hooks, `core.fsmonitor`, aliases or filters for your next host `git`).
 - **Agent homes are sandbox-only** (`~/.claude-devcontainer`,
   `~/.copilot-devcontainer`), never your host `~/.claude` / `~/.copilot`.
-  Claude's settings are managed settings in the image, root-owned.
+  Claude's settings are managed settings (root-owned in the image, the
+  project part mounted read-only).
 - **Host git credentials stay out:** `GIT_CONFIG_NOSYSTEM=1` makes git ignore
   `/etc/gitconfig`, where VS Code installs its credential-forwarding helper, and
   `remoteEnv` clears `GIT_ASKPASS`, `SSH_AUTH_SOCK`, `BROWSER` and VS Code's IPC
