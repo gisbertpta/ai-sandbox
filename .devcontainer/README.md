@@ -97,6 +97,7 @@ network, so e.g. `uv sync` against a private index works during the build.
 | `base/.vimrc` | Minimal vim config for the `dev` user. |
 | `modules/claude/` | Claude Code: install + wrapper (bypass mode), generic managed settings (Stop hook, `.env` read block), allowlist, sandbox home mounts. |
 | `modules/copilot/` | GitHub Copilot CLI: install + wrapper, allowlist, token + state mounts. |
+| `modules/cred-gw/` | Opt-in: credential gateway for Jira/GitLab (own service), CA trust, `make-certs.sh`. |
 | `modules/ntfy/` | Opt-in: allowlists `ntfy.sh` and mounts the topic for the Claude Stop hook. |
 | `.generated/` | Not tracked: written by `initialize.sh` from the enabled modules. |
 | `proxy/` | Squid egress proxy: `Dockerfile`, `squid.conf`, generic `allowlist.txt`. |
@@ -375,8 +376,8 @@ request:
 | Job | What |
 |---|---|
 | `lint` | `shellcheck -S warning` on all `*.sh`, strict JSON check (managed settings) |
-| `cred-gw` | The policy unit tests, in `python:3.11-slim` like the cred-gw image |
-| `sandbox` | `tests/sandbox-test.sh`: builds the images, starts the devcontainer in a throwaway workspace with fake repos and a project layer, and checks that masks hold, protected paths can't be changed or renamed away, normal git work still works, and the next start warns about new paths |
+| `cred-gw` | The policy unit tests (`modules/cred-gw/gateway/`), in `python:3.11-slim` like the gateway image |
+| `sandbox` | `tests/sandbox-test.sh`: builds the images, starts the devcontainer in a throwaway workspace with fake repos and a project layer, and checks that masks hold, protected paths can't be changed or renamed away, normal git work still works, the next start warns about new paths, and with the `cred-gw` module: host names reach the gateway, TLS verifies, the policy applies, the tokens stay out of the devcontainer |
 
 Run the end-to-end test on the host after changing `initialize.sh`, the compose
 files or the protection:
@@ -441,7 +442,9 @@ image changes (base, modules) are only covered by a full run.
 - **Tokens in the sandbox are readable by the agent:** the sandbox Claude login
   (`~/.claude-devcontainer/.credentials.json`) and the Copilot PAT. Both are
   sandbox-only and can be revoked separately; the PAT can only make Copilot
-  requests.
+  requests. Jira and GitLab tokens never enter the sandbox when you use the
+  [`cred-gw` module](modules/README.md#cred-gw-credential-gateway); the agent can
+  still do everything the gateway's rules allow.
 - **Protected paths that don't exist yet** can't be mounted (Docker would create
   them on the host, owned by root), so the agent can create them, e.g. a new
   `.mcp.json` or `.claude/settings.json` in a repo that has no `.claude/`.

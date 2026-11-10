@@ -24,7 +24,7 @@ jobs:
       - name: shellcheck
         # Pinned image, so the result doesn't change with the runner's shellcheck
         run: |
-          git ls-files -z '*.sh' | xargs -0 docker run --rm --network none -v "$PWD:/r:ro" -w /r \
+          git ls-files -z '*.sh' '.devcontainer/modules/*/configure' | xargs -0 docker run --rm --network none -v "$PWD:/r:ro" -w /r \
             koalaman/shellcheck:v0.11.0 -S warning -x
       - name: JSON files are valid
         # Strict JSON (Claude refuses to start on an invalid managed settings file);
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Policy tests (stdlib only, same Python as the cred-gw image)
         run: |
-          docker run --rm --network none -v "$PWD/.devcontainer/cred-gw:/app:ro" -w /app \
+          docker run --rm --network none -v "$PWD/.devcontainer/modules/cred-gw/gateway:/app:ro" -w /app \
             -e PYTHONDONTWRITEBYTECODE=1 python:3.11-slim python -m unittest -v
 
   sandbox:

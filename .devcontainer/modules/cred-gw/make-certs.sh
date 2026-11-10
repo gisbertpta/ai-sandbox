@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # make-certs.sh — creates the sandbox CA and the cred-gw certificate on the host (once; existing files are kept).
 #
-#   bash .devcontainer/cred-gw/make-certs.sh <host> [host ...]     e.g. jira.example.com git.example.com
+#   bash .devcontainer/modules/cred-gw/make-certs.sh <host> [host ...]     e.g. jira.example.com git.example.com
 #
 # The hosts are the upstream Jira/GitLab names the devcontainer uses; cred-gw answers for them.
 #

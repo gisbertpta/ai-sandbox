@@ -8,12 +8,20 @@
 #   - protected paths can't be changed, and can't be renamed away
 #   - normal work (edit, move, commit, checkout, gc) still works
 #   - on the next start, initialize.sh warns about new paths and symlinks
+#   - module cred-gw: upstream host names reach the gateway (not the proxy),
+#     TLS verifies against the sandbox CA, the policy applies, the tokens stay
+#     out of the devcontainer, and a missing token stops the start
 #
 #   bash .devcontainer/tests/sandbox-test.sh
-#   NO_BUILD=1 bash .devcontainer/tests/sandbox-test.sh   # use the existing
-#       ai-envelope-* images instead of rebuilding (and retagging) them
+#   NO_BUILD=1 bash .devcontainer/tests/sandbox-test.sh   # reuse your existing
+#       ai-envelope-base and ai-envelope-mod-claude images (faster, but tests
+#       the current scripts against the images you have)
 #
-# Needs: docker with compose v2, git. Run in CI by .github/workflows/ci.yml.
+# The test builds its images as ai-envelope-test-* and removes them afterwards,
+# so it never replaces your ai-envelope-* images (the cred-gw module image of the
+# test trusts a throwaway CA).
+#
+# Needs: docker with compose >= 2.20 (include), git, openssl. Run in CI by .github/workflows/ci.yml.
 
 set -euo pipefail
 
@@ -21,15 +29,17 @@ ENVELOPE="$(cd "$(dirname "$0")/../.." && pwd)"
 TMP="$(mktemp -d)"
 WS="$TMP/ws"
 export HOME="$TMP/home"
+export AI_ENVELOPE_IMAGE_PREFIX=ai-envelope-test
 COMPOSE=(docker compose -p sandbox-test -f docker-compose.yml -f .generated/compose.yml -f project/compose.yml)
 FAILED=0
 
 cleanup() {
   (cd "$WS/.devcontainer" 2>/dev/null && "${COMPOSE[@]}" down --rmi local -v >/dev/null 2>&1) || true
   # The container created files as uid 1000; remove them as root in a container
-  docker run --rm --network none -u 0 -v "$TMP:/t" --entrypoint sh ai-envelope-base:latest \
+  docker run --rm --network none -u 0 -v "$TMP:/t" --entrypoint sh ai-envelope-test-base:latest \
     -c 'rm -rf /t/* /t/.[!.]*' >/dev/null 2>&1 || true
   rm -rf "$TMP" 2>/dev/null || true
+  docker images --format '{{.Repository}}:{{.Tag}}' 'ai-envelope-test-*' | xargs -r docker rmi -f >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -66,6 +76,14 @@ ln -s ../repo-b/ai-envelope "$WS/.devcontainer/project"
 mkdir -p "$LAYER/dummies/repo-a/configs"
 echo dummy > "$LAYER/dummies/repo-a/configs/secrets.yml"
 printf 'repo-a/.env\nrepo-a/configs\n' > "$LAYER/excluded-files"
+printf 'claude\ncred-gw\n' > "$LAYER/modules"
+cat > "$LAYER/cred-gw.env" <<'EOF'
+JIRA_GW_UPSTREAM=https://jira.example.test
+JIRA_GW_LABEL=sandbox-test
+GITLAB_GW_UPSTREAM=https://gitlab.example.test
+GITLAB_GW_READ=grp/repo-a
+CRED_GW_SUBNET=172.30.98.0/28
+EOF
 cat > "$LAYER/compose.yml" <<'EOF'
 name: sandbox-test
 services:
@@ -75,16 +93,41 @@ services:
       - ./project/dummies/repo-a/configs:/workspace/repo-a/configs:ro
 EOF
 
-# CI runners don't run as uid 1000 ('dev' in the container): make the fixture
-# writable for it. Read-only mounts stay read-only regardless.
+# cred-gw: fake tokens, sandbox CA + gateway certificate for the two hosts
+mkdir -p "$HOME/.config/ai-envelope/cred-gw"
+echo jira-fake-token-4711 > "$HOME/.config/ai-envelope/cred-gw/jira-token"
+echo gitlab-fake-token-4711 > "$HOME/.config/ai-envelope/cred-gw/gitlab-token"
+bash "$WS/.devcontainer/modules/cred-gw/make-certs.sh" jira.example.test gitlab.example.test > "$TMP/certs.log" 2>&1 \
+  || { cat "$TMP/certs.log"; echo "FAIL: make-certs.sh"; exit 1; }
+
+# CI runners don't run as uid 1000 ('dev' in the container, 'gw' in cred-gw):
+# make the fixture readable/writable for it. Read-only mounts stay read-only.
 chmod -R a+rwX "$WS"
+chmod a+r "$HOME/.config/ai-envelope/cred-gw"/* "$HOME/.config/ai-envelope/sandbox-ca/cred-gw/tls.key"
+chmod a+rx "$HOME/.config/ai-envelope/sandbox-ca/cred-gw"
 
 # ── initialize.sh ─────────────────────────────────────────────────────────────
 INIT_ENV=()
 if [ "${NO_BUILD:-}" = 1 ]; then
-  # Shim: skip 'docker build', pass everything else to the real docker
+  # Your images under the test names; the shim then skips 'docker build -t <tag>'
+  # when <tag> exists, so only the cred-gw module image is built
+  for img in base mod-claude; do
+    docker image inspect "ai-envelope-$img:latest" > /dev/null 2>&1 \
+      || { echo "FAIL: NO_BUILD=1 needs ai-envelope-$img:latest (run once without it)"; exit 1; }
+    docker tag "ai-envelope-$img:latest" "ai-envelope-test-$img:latest"
+  done
   mkdir -p "$TMP/bin"
-  printf '#!/bin/sh\n[ "$1" = build ] && exit 0\nexec %s "$@"\n' "$(command -v docker)" > "$TMP/bin/docker"
+  cat > "$TMP/bin/docker" <<EOF
+#!/usr/bin/env bash
+if [ "\$1" = build ]; then
+  prev=""
+  for a in "\$@"; do
+    if [ "\$prev" = -t ] && $(command -v docker) image inspect "\$a" > /dev/null 2>&1; then exit 0; fi
+    prev="\$a"
+  done
+fi
+exec $(command -v docker) "\$@"
+EOF
   chmod +x "$TMP/bin/docker"
   INIT_ENV=(env "PATH=$TMP/bin:$PATH")
 fi
@@ -94,11 +137,13 @@ echo "== initialize.sh"
   || { cat "$TMP/init1.log"; echo "FAIL: initialize.sh"; exit 1; }
 grep -q 'repo-b/.envrc is or lies under a symlink' "$TMP/init1.log" || fail "no warning for the symlinked .envrc"
 grep -q 'repo-b/.envrc:/' "$WS/.devcontainer/.generated/compose.yml" && fail "symlinked .envrc was mounted"
+grep -q 'Gateway 172.30.98.10 for jira.example.test gitlab.example.test' "$TMP/init1.log" || fail "cred-gw configure did not run"
 
 cd "$WS/.devcontainer"
 "${COMPOSE[@]}" config -q || { echo "FAIL: compose config"; exit 1; }
-"${COMPOSE[@]}" build -q devcontainer > "$TMP/build.log" 2>&1 \
+"${COMPOSE[@]}" build -q devcontainer cred-gw > "$TMP/build.log" 2>&1 \
   || { cat "$TMP/build.log"; echo "FAIL: build"; exit 1; }
+"${COMPOSE[@]}" up -d cred-gw > "$TMP/up.log" 2>&1 || { cat "$TMP/up.log"; echo "FAIL: start cred-gw"; exit 1; }
 
 # ── Inside the container ──────────────────────────────────────────────────────
 echo "== Container checks"
@@ -143,6 +188,17 @@ expect allowed "git add + commit"                sh -c 'cd repo-a && "$@" add RE
 expect allowed "git checkout -b"                 git -C repo-a checkout -qb feature/x
 expect allowed "git gc"                          git -C repo-a gc -q
 expect allowed "create repo-b/.mcp.json"         sh -c 'echo {} > repo-b/.mcp.json'
+
+echo "-- cred-gw"
+expect allowed "jira host resolves to the gateway" sh -c '[ "$(getent hosts jira.example.test | cut -d" " -f1)" = 172.30.98.10 ]'
+expect allowed "jira host bypasses the proxy"    sh -c 'printf %s "$NO_PROXY" | grep -q jira.example.test'
+# No -k: TLS must verify against the sandbox CA. A DELETE is never allowed,
+# so the gateway answers 403 itself, without asking the upstream.
+code=$(curl -sS -o /tmp/r -w '%{http_code}' -X DELETE https://jira.example.test/rest/api/2/issue/X-1 2>/tmp/e || true)
+if [ "$code" = 403 ] && grep -q 'cred-gw:' /tmp/r; then echo "  ok    TLS verifies, policy denies DELETE (403 from cred-gw)"
+else echo "  FAIL  expected a 403 from cred-gw, got '$code': $(cat /tmp/r /tmp/e 2>/dev/null | head -c 300)"; rc=1; fi
+expect blocked "tokens not mounted here"         ls /run/cred-gw
+expect blocked "tokens not in the environment"   sh -c 'env | grep -q fake-token'
 exit $rc
 EOF
 
@@ -160,6 +216,16 @@ fi
 grep -q '"../repo-b/.mcp.json:/workspace/repo-b/.mcp.json:ro"' .generated/compose.yml \
   && echo "  ok    repo-b/.mcp.json is read-only from now on" \
   || fail "repo-b/.mcp.json not protected after it appeared"
+
+# cred-gw configured without its token: the start must stop
+rm "$HOME/.config/ai-envelope/cred-gw/gitlab-token"
+if "${INIT_ENV[@]}" bash initialize.sh > "$TMP/init3.log" 2>&1; then
+  fail "initialize.sh started without the gitlab token"
+elif grep -q 'gitlab is configured, but .*gitlab-token is missing' "$TMP/init3.log"; then
+  echo "  ok    a missing token stops the start"
+else
+  cat "$TMP/init3.log"; fail "initialize.sh failed, but not because of the missing token"
+fi
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "sandbox-test: all checks passed"; else echo "sandbox-test: FAILED"; exit 1; fi
