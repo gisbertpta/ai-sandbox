@@ -8,6 +8,7 @@
 #   - protected paths can't be changed, and can't be renamed away
 #   - normal work (edit, move, commit, checkout, gc) still works
 #   - on the next start, initialize.sh warns about new paths and symlinks
+#   - module build secrets: the build sees the secret, the image doesn't hold it
 #   - module cred-gw: upstream host names reach the gateway (not the proxy),
 #     TLS verifies against the sandbox CA, the policy applies, the tokens stay
 #     out of the devcontainer, and a missing token stops the start
@@ -76,7 +77,21 @@ ln -s ../repo-b/ai-sandbox "$WS/.devcontainer/project"
 mkdir -p "$LAYER/dummies/repo-a/configs"
 echo dummy > "$LAYER/dummies/repo-a/configs/secrets.yml"
 printf 'repo-a/.env\nrepo-a/configs\n' > "$LAYER/excluded-files"
-printf 'claude\ncred-gw\n' > "$LAYER/modules"
+printf 'claude\ncred-gw\nsecret-probe\n' > "$LAYER/modules"
+
+# secret-probe: a test-only module that reads a build secret and keeps only its hash
+PROBE="$WS/.devcontainer/modules/secret-probe"
+mkdir -p "$PROBE"
+PROBE_SECRET="probe-secret-$RANDOM-$RANDOM-4711"
+echo "$PROBE_SECRET" > "$HOME/probe-secret"
+echo 'probe ${HOME}/probe-secret' > "$PROBE/build-secrets"
+cat > "$PROBE/Dockerfile" <<'EOF'
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER root
+RUN --mount=type=secret,id=probe,required=true sha256sum /run/secrets/probe | cut -d' ' -f1 > /opt/probe-sha
+USER dev
+EOF
 cat > "$LAYER/cred-gw.env" <<'EOF'
 JIRA_GW_UPSTREAM=https://jira.example.test
 JIRA_GW_LABEL=sandbox-test
@@ -144,6 +159,17 @@ cd "$WS/.devcontainer"
 "${COMPOSE[@]}" build -q devcontainer cred-gw > "$TMP/build.log" 2>&1 \
   || { cat "$TMP/build.log"; echo "FAIL: build"; exit 1; }
 "${COMPOSE[@]}" up -d cred-gw > "$TMP/up.log" 2>&1 || { cat "$TMP/up.log"; echo "FAIL: start cred-gw"; exit 1; }
+
+echo "== Build secrets"
+PROBE_IMAGE=ai-sandbox-test-mod-claude-cred-gw-secret-probe:latest
+want="$(printf '%s\n' "$PROBE_SECRET" | sha256sum | cut -d' ' -f1)"
+got="$(docker run --rm --network none --entrypoint cat "$PROBE_IMAGE" /opt/probe-sha 2>/dev/null || true)"
+[ "$got" = "$want" ] && echo "  ok    the module build saw the secret" || fail "the module build did not get the secret (got '$got')"
+if docker save "$PROBE_IMAGE" | grep -qaF "$PROBE_SECRET"; then
+  fail "the secret is in the module image"
+else
+  echo "  ok    the secret is not in the image layers"
+fi
 
 # ── Inside the container ──────────────────────────────────────────────────────
 echo "== Container checks"

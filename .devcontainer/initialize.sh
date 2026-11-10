@@ -166,6 +166,18 @@ for m in "${MODULES[@]}"; do
     dir="${dir//\$\{HOME\}/$HOME}"; dir="${dir/#\~/$HOME}"
     CONTEXTS+=(--build-context "${name}=${dir}")
   done < <(strip "modules/$m/build-contexts")
+  # Build secrets (modules/<m>/build-secrets: '<id> <host file>'), e.g. a token
+  # to fetch something at build time. The Dockerfile reads it with
+  # 'RUN --mount=type=secret,id=<id>'; it exists only during that RUN and never
+  # ends up in the image. List the file in prereqs too.
+  while read -r id file; do
+    file="${file//\$\{HOME\}/$HOME}"; file="${file/#\~/$HOME}"
+    if [ ! -s "$file" ]; then
+      echo "[init] ERROR: module '$m': build secret '$id' needs ${file} (missing or empty)."
+      exit 1
+    fi
+    CONTEXTS+=(--secret "id=${id},src=${file}")
+  done < <(strip "modules/$m/build-secrets")
   echo "[init] Building module '$m' as ${chain}:latest ..."
   docker build "${BUILD_OPTS[@]}" "${CONTEXTS[@]}" -t "${chain}:latest" --build-arg "BASE_IMAGE=${image}" "modules/$m"
   image="${chain}:latest"
