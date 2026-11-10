@@ -67,8 +67,11 @@ network, so e.g. `uv sync` against a private index works during the build.
    `project/modules` (default: `claude`) and checks the host prerequisites
    (generic + per module). Then it builds `base/` as `ai-envelope-base:latest`,
    stacks one image per module on top (e.g. `ai-envelope-mod-claude-copilot:latest`)
-   and generates `.generated/compose.yml` (module mounts, read-only git config of
-   every working repo) + `.generated/allowlist-modules.txt`.
+   and generates `.generated/compose.yml` (module mounts, read-only protection of
+   `.git/config`/`hooks` and `protected-paths` in every working repo, see
+   [Security notes](#security-notes--known-gaps)) + `.generated/allowlist-modules.txt`.
+   It warns about protected paths and working repos that are new since the last
+   start (`.generated/protection-state`).
 2. **Host:** compose merges `docker-compose.yml` + `.generated/compose.yml` +
    `project/compose.yml` and builds `project/Dockerfile` (`FROM` the last module
    image). The build context is the workspace root, filtered by
@@ -84,6 +87,7 @@ network, so e.g. `uv sync` against a private index works during the build.
 | `devcontainer.json` | Entry point for VS Code. Runs `initialize.sh`, loads the compose files, sets the user and extensions. |
 | `docker-compose.yml` | **The generic config:** build, mounts, capabilities, networks, proxy env. |
 | `initialize.sh` | Runs on the host before start: checks the slot and prerequisites, builds base + module images, generates `.generated/`. |
+| `protected-paths` | Paths in every working repo (and the envelope root) that host tools run by themselves; mounted read-only. |
 | `compose.sh` | `docker compose` with all compose files. Use it instead of bare `docker compose`. |
 | `base/Dockerfile` | Generic image: Node, zsh, vim, git, rg, fd, jq, fzf, shellcheck, python3, uv, `dev` user. No agent CLI. |
 | `base/check-exclusions.sh` | The check. Installed in the image as `/usr/local/bin/check-exclusions`. |
@@ -366,11 +370,23 @@ restarted.
 
 ### What is protected
 
-- **Nothing the agent writes runs on the host by itself.** Read-only for the
-  agent: `.devcontainer/`, the project layer (also when it lives in a working
-  repo), the envelope's `.git`, `AGENTS.md`/`CLAUDE.md`, `.gitignore`,
-  `.dockerignore`, and `.git/config` + `.git/hooks` of every working repo (no
-  planted hooks, `core.fsmonitor`, aliases or filters for your next host `git`).
+- **What host tools run by themselves stays read-only.** For the agent:
+  `.devcontainer/`, the project layer (also when it lives in a working repo),
+  the envelope's `.git`, `AGENTS.md`/`CLAUDE.md`, `.gitignore`, `.dockerignore`,
+  and in every working repo `.git/config` + `.git/hooks` (no planted hooks,
+  `core.fsmonitor`, aliases or filters for your next host `git`), a
+  `core.hooksPath` inside the repo (e.g. `.husky/`), and every path in
+  [`protected-paths`](protected-paths): `.claude/`, `.mcp.json`, `.vscode/`,
+  `.devcontainer/`, `.envrc`, `.pre-commit-config.yaml`. The same list applies
+  to the envelope root. A project layer adjusts it in its own `protected-paths`.
+- **Read-only can't be undone by renaming.** A mount point can't be renamed, but
+  its parent directory can (`mv repo/.git repo/.git-x`, then a fresh `.git` with
+  a planted hook). So `initialize.sh` also mounts every directory above a
+  protected path onto itself (read-write), e.g. `repo/` and `repo/.git/`. Normal
+  work is unaffected; only renaming or moving those directories themselves fails.
+- **Symlinks are never mounted.** A protected path that is (or lies under) a
+  symlink is reported and left unprotected, so a planted `.vscode -> ~/.ssh`
+  can't get a host directory mounted into the sandbox at the next start.
 - **Agent homes are sandbox-only** (`~/.claude-devcontainer`,
   `~/.copilot-devcontainer`), never your host `~/.claude` / `~/.copilot`.
   Claude's settings are managed settings (root-owned in the image, the
@@ -401,10 +417,19 @@ restarted.
   (`~/.claude-devcontainer/.credentials.json`) and the Copilot PAT. Both are
   sandbox-only and can be revoked separately; the PAT can only make Copilot
   requests.
-- **The workspace itself is writable.** The agent can change project code,
-  including things you later run on the host (tests, `Makefile`,
-  `.pre-commit-config.yaml`, `.vscode/tasks.json`). Review `git diff` before you
-  run, commit or push anything on the host.
+- **Protected paths that don't exist yet** can't be mounted (Docker would create
+  them on the host, owned by root), so the agent can create them, e.g. a new
+  `.mcp.json` or `.claude/settings.json` in a repo that has no `.claude/`.
+  `initialize.sh` warns at the next start (`... is new since the last start`) and
+  protects them from then on. The same goes for a new working repo the agent
+  created or cloned: check its `.git/config` and `.git/hooks` before you run git
+  there.
+- **The rest of the workspace is writable.** The agent can change project code,
+  including things you later run on the host (tests, `Makefile`, `package.json`
+  scripts, scripts that a protected hook calls; add those to the layer's
+  `protected-paths`). And `CLAUDE.md`/`AGENTS.md` of the working repos stay
+  writable, so the agent can put instructions there for your next host session.
+  Review `git diff` before you run, commit or push anything on the host.
 - `check-exclusions` and the agent wrappers protect against **accidents**
   (a forgotten mount), not against a deliberately misbehaving agent (it could run
   `claude.real`). The actual protection is the mounts and the network.

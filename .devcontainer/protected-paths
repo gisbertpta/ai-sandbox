@@ -1,0 +1,25 @@
+# Paths that tools on the HOST run or load without asking, so the agent must not
+# change them. Relative to each working repo and to the envelope root; every one
+# that exists is mounted read-only by initialize.sh (one per line, # = comment).
+#
+# Always protected in addition (not listed here): .git/config, .git/hooks and a
+# core.hooksPath inside the repo (e.g. .husky/) of every working repo.
+#
+# A project layer adds paths in its protected-paths, or drops one with '!path'
+# (e.g. '!.vscode' if the agent should maintain the VS Code config).
+#
+# Paths that don't exist can't be mounted (Docker would create them on the host).
+# initialize.sh warns at the next start if one has appeared.
+
+# Claude Code on the host: settings with hooks, hook scripts, skills, commands, agents
+.claude
+# MCP servers Claude starts on the host
+.mcp.json
+# VS Code: tasks (runOn folderOpen), settings with tool paths, launch configs
+.vscode
+# A repo's own devcontainer: initializeCommand runs on the host
+.devcontainer
+# direnv: runs when you cd into the repo (after 'direnv allow')
+.envrc
+# pre-commit: 'repo: local' hooks run on the host at every commit
+.pre-commit-config.yaml

@@ -1,0 +1,10 @@
+# Optional. Adjusts the generic .devcontainer/protected-paths for this project:
+# paths relative to each working repo that the agent must not change because
+# tools on the host run or load them. One per line; '!path' drops a generic one.
+# After changes: rebuild the container.
+#
+# Scripts that host-side hooks call, e.g. a guard used by Claude on the host:
+# scripts/agent/guards
+#
+# Let the agent maintain the VS Code config after all:
+# !.vscode

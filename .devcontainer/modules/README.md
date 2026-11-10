@@ -30,8 +30,8 @@ line). Without that file, you get `claude` only.
    projects with different module sets don't overwrite each other.
 4. Generates `.devcontainer/.generated/` (gitignored):
    - `compose.yml`: compose override with `BASE_IMAGE` (the last chain image),
-     all module mounts, and the read-only git config of the working repos. It is
-     merged between `docker-compose.yml` and `project/compose.yml`.
+     all module mounts, and the read-only protection (`.git/config`,
+     `.git/hooks`, `protected-paths`). It is merged between `docker-compose.yml` and `project/compose.yml`.
    - `allowlist-modules.txt`: all module allowlists, read by the proxy.
 
 The project layer's `Dockerfile` starts `FROM` the last chain image, so it

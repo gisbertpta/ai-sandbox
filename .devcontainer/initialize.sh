@@ -7,11 +7,13 @@
 # 3. Checks the host prerequisites that Docker would otherwise silently "fix"
 #    by creating directories (generic, per module, per project layer)
 # 4. Builds the generic base image, then stacks the module images on top of it
-# 5. Generates .generated/:
+# 5. Read-only protection for paths the host runs (protected-paths)
+# 6. Generates .generated/:
 #    compose.yml             module image as BASE_IMAGE, module mounts, read-only
-#                            .git/config + .git/hooks of every working repo and the
-#                            project layer (if it lives outside .devcontainer/),
-#                            the project's Claude settings (project/claude-settings.json)
+#                            protection (.git/config + .git/hooks of every working
+#                            repo, protected-paths, the project layer if it lives
+#                            outside .devcontainer/), the project's Claude settings
+#    protection-state        what was missing at this start, to warn about new paths
 #    allowlist-modules.txt   proxy allowlist of the modules
 #
 # NO_CACHE=1 bash .devcontainer/initialize.sh  rebuilds all images without cache
@@ -122,36 +124,172 @@ for m in "${MODULES[@]}"; do
   image="${chain}:latest"
 done
 
-# ── 5. Generated files ────────────────────────────────────────────────────────
+# ── 5. Read-only protection ───────────────────────────────────────────────────
+# Paths that tools on the HOST run or load without asking (git hooks/config,
+# Claude/VS Code/devcontainer settings, ...) are mounted read-only, in every
+# working repo and in the envelope root: protected-paths (generic) adjusted by
+# project/protected-paths. Plus .git/config + .git/hooks of every working repo
+# and the project layer itself.
+#
+# protect <path> (relative to the workspace root, must exist) mounts the path
+# read-only and every directory above it read-write onto itself. A mount point
+# can't be renamed (EBUSY), its parent can: without those extra mounts the agent
+# could 'mv repo/.git repo/.git-x' and build a new .git with a planted hook.
+declare -A RW_DIRS=() RO_PATHS=()
+NOT_PROTECTED=()   # protected paths that don't exist (yet): watched, see below
+
+# true if <path> or one of its parent directories is a symlink. Never mount
+# those: a planted '.vscode -> ~/.ssh' would mount the host's ~/.ssh.
+has_symlink() {
+  local dir="" part
+  local -a parts
+  IFS=/ read -ra parts <<< "$1"
+  for part in "${parts[@]}"; do
+    dir="${dir:+$dir/}$part"
+    [ -L "../$dir" ] && return 0
+  done
+  return 1
+}
+
+protect() {
+  local path="$1" dir="" part
+  local -a parts=()
+  if has_symlink "$path"; then
+    echo "[init] WARNING: ${path} is or lies under a symlink — NOT protected (check where it points)."
+    return
+  fi
+  [[ "$path" == */* ]] && IFS=/ read -ra parts <<< "${path%/*}"
+  for part in "${parts[@]}"; do
+    dir="${dir:+$dir/}$part"
+    RW_DIRS[$dir]=1
+  done
+  RO_PATHS[$path]=1
+}
+
+# Protected paths per repo: generic list, then the project's additions and
+# '!path' removals
+mapfile -t PROTECTED < <(strip protected-paths)
+while read -r line; do
+  if [[ "$line" == '!'* ]]; then
+    for i in "${!PROTECTED[@]}"; do
+      [ "${PROTECTED[$i]}" = "${line#!}" ] && unset 'PROTECTED[i]'
+    done
+  else
+    PROTECTED+=("$line")
+  fi
+done < <(strip project/protected-paths)
+for p in "${PROTECTED[@]}"; do
+  if [[ "$p" == /* || "/$p/" == */../* ]]; then
+    echo "[init] ERROR: protected path '$p' must be relative to the repo, without '..'."
+    exit 1
+  fi
+done
+
+# protect_repo <repo> (relative to the workspace root, '' = envelope root)
+protect_repo() {
+  local repo="$1" p full done_list=()
+  local -a paths=("${PROTECTED[@]}")
+  if [ -n "$repo" ]; then
+    paths+=(.git/config .git/hooks)
+    # core.hooksPath inside the repo (e.g. .husky): git runs those instead of .git/hooks.
+    # 'git config -f' only parses the file, it runs nothing from it.
+    local hp
+    hp="$(git config -f "../$repo/.git/config" --get core.hooksPath 2>/dev/null || true)"
+    if [ -n "$hp" ]; then
+      case "$hp" in
+        /*|~*) echo "[init] WARNING: ${repo}: core.hooksPath ${hp} is outside the repo — not protected by the sandbox." ;;
+        *)     paths+=("${hp%/}") ;;
+      esac
+    fi
+  fi
+  for p in "${paths[@]}"; do
+    # The envelope's .devcontainer/ is read-only already (docker-compose.yml)
+    [ -z "$repo" ] && [ "${p#./}" = .devcontainer ] && continue
+    full="${repo:+$repo/}${p#./}"
+    if [ -e "../$full" ] || [ -L "../$full" ]; then
+      protect "$full"
+      [[ -n "${RO_PATHS[$full]:-}" ]] && done_list+=("${p#./}")
+    else
+      NOT_PROTECTED+=("$full")
+    fi
+  done
+  echo "[init] ${repo:-envelope root}: read-only ${done_list[*]:-(nothing)}"
+}
+
 # Working repos: every git repo up to two levels below the workspace root
-# (except the envelope itself, whose .git is mounted read-only as a whole).
-# Their .git/config and .git/hooks become read-only, so the agent can't plant
-# hooks, core.fsmonitor, aliases or filters that run when you use git on the host.
-REPO_MOUNTS=()
+# (except the envelope itself, whose .git is mounted read-only as a whole)
+REPOS=()
 while IFS= read -r gitdir; do
   repo="${gitdir%/.git}"; repo="${repo#../}"
-  if [ ! -d "$gitdir" ]; then
-    echo "[init] WARNING: ${repo}/.git is not a directory (worktree/submodule?) — its git config is NOT protected."
+  if [ ! -d "$gitdir" ] || [ -L "$gitdir" ]; then
+    echo "[init] WARNING: ${repo}/.git is not a directory (worktree/submodule/symlink?) — its git config is NOT protected."
     continue
   fi
   mkdir -p "$gitdir/hooks"
   [ -f "$gitdir/config" ] || { echo "[init] WARNING: ${repo}/.git/config missing — skipped."; continue; }
-  REPO_MOUNTS+=("../${repo}/.git/config:/workspace/${repo}/.git/config:ro"
-                "../${repo}/.git/hooks:/workspace/${repo}/.git/hooks:ro")
-  echo "[init] Working repo: ${repo} (.git/config + .git/hooks read-only)"
+  REPOS+=("$repo")
 done < <(find .. -mindepth 2 -maxdepth 3 -name .git -not -path '../.devcontainer/*' | sort)
 
+protect_repo ""
+for repo in "${REPOS[@]}"; do
+  protect_repo "$repo"
+done
+
 # Project layer outside .devcontainer/ (e.g. in a working repo): read-only too,
-# so the agent can't change masks, allowlist or Dockerfile for the next rebuild
+# so the agent can't change masks, allowlist, compose.yml or Dockerfile for the
+# next rebuild
 ws="$(readlink -f ..)"
 layer="$(readlink -f project)"
 case "$layer" in
   "$ws/.devcontainer"/*) ;;
   "$ws"/*) rel="${layer#"$ws"/}"
-           REPO_MOUNTS+=("../${rel}:/workspace/${rel}:ro")
+           protect "$rel"
            echo "[init] Project layer ${rel} mounted read-only" ;;
   *)       echo "[init] WARNING: project layer is outside the workspace; check-exclusions can't read it in the container." ;;
 esac
+
+# What can't be mounted is watched instead: a mount would make Docker create the
+# path on the host (as root). Warn when a protected path or a repo shows up that
+# wasn't there at the last start — the agent may have created it. From then on
+# it is protected, but its content needs a look before host tools use it.
+mkdir -p "$GEN"
+STATE="$GEN/protection-state"
+if [ -f "$STATE" ]; then
+  while IFS=' ' read -r kind path; do
+    case "$kind" in
+      missing) [ -e "../$path" ] || [ -L "../$path" ] || continue
+               echo "[init] WARNING: ${path} is new since the last start. Review it before tools on the host use it." ;;
+      repo)    ;;
+    esac
+  done < "$STATE"
+  for repo in "${REPOS[@]}"; do
+    grep -qxF "repo $repo" "$STATE" ||
+      echo "[init] WARNING: working repo ${repo} is new since the last start. If the agent created it, check its .git/config and .git/hooks before running git there."
+  done
+fi
+{
+  for p in "${NOT_PROTECTED[@]}"; do echo "missing $p"; done
+  for repo in "${REPOS[@]}"; do echo "repo $repo"; done
+} > "$STATE"
+
+# Mount list: read-write parents, except inside a read-only path (that would
+# make part of it writable again)
+PROTECT_MOUNTS=()
+for d in "${!RW_DIRS[@]}"; do
+  inside_ro=0
+  for r in "${!RO_PATHS[@]}"; do
+    [[ "$d" == "$r" || "$d" == "$r"/* ]] && { inside_ro=1; break; }
+  done
+  [ "$inside_ro" -eq 1 ] || PROTECT_MOUNTS+=("../${d}:/workspace/${d}")
+done
+for r in "${!RO_PATHS[@]}"; do
+  PROTECT_MOUNTS+=("../${r}:/workspace/${r}:ro")
+done
+if [ "${#PROTECT_MOUNTS[@]}" -gt 0 ]; then
+  mapfile -t PROTECT_MOUNTS < <(printf '%s\n' "${PROTECT_MOUNTS[@]}" | sort)
+fi
+
+# ── 6. Generated files ────────────────────────────────────────────────────────
 
 # Project Claude settings: merged over the module's managed settings as a drop-in
 # (lists such as permissions.deny and hooks are combined). Read-only, so the agent
@@ -165,12 +303,11 @@ if [ -f project/claude-settings.json ]; then
     echo "[init] ERROR: project/claude-settings.json must be a JSON object (strict JSON, no comments)."
     exit 1
   else
-    REPO_MOUNTS+=("./project/claude-settings.json:/etc/claude-code/managed-settings.d/50-project.json:ro")
+    PROTECT_MOUNTS+=("./project/claude-settings.json:/etc/claude-code/managed-settings.d/50-project.json:ro")
     echo "[init] Project Claude settings: claude-settings.json -> managed-settings.d/50-project.json"
   fi
 fi
 
-mkdir -p "$GEN"
 rm -f "$GEN/modules.yml"   # pre-rename leftover
 {
   echo "# GENERATED by initialize.sh — do not edit."
@@ -184,8 +321,11 @@ rm -f "$GEN/modules.yml"   # pre-rename leftover
     # ${HOME} is kept literally here, compose interpolates it
     strip "modules/$m/mounts" | sed -e "s|.*|      - \"&\"   # module $m|"
   done
-  for v in "${REPO_MOUNTS[@]}"; do
-    echo "      - \"$v\"   # read-only"
+  for v in "${PROTECT_MOUNTS[@]}"; do
+    case "$v" in
+      *:ro) echo "      - \"$v\"   # read-only" ;;
+      *)    echo "      - \"$v\"   # parent of a read-only path (can't be renamed)" ;;
+    esac
   done
 } > "$GEN/compose.yml"
 # An empty 'volumes:' is invalid compose; drop it when nothing adds mounts
