@@ -140,8 +140,8 @@ and the TLS key. Everything else still goes through the proxy.
    `write_repository` only if pushing is enabled):
    ```bash
    mkdir -p ~/.config/ai-sandbox/cred-gw && chmod 700 ~/.config/ai-sandbox/cred-gw
-   (umask 077; read -rs -p 'Jira token: ' t && printf '%s\n' "$t" > ~/.config/ai-sandbox/cred-gw/jira-token)
-   (umask 077; read -rs -p 'GitLab token: ' t && printf '%s\n' "$t" > ~/.config/ai-sandbox/cred-gw/gitlab-token)
+   (umask 077; printf 'Jira token: '; read -rs t && echo && printf '%s\n' "$t" > ~/.config/ai-sandbox/cred-gw/jira-token)
+   (umask 077; printf 'GitLab token: '; read -rs t && echo && printf '%s\n' "$t" > ~/.config/ai-sandbox/cred-gw/gitlab-token)
    ```
 3. Create the sandbox CA and the gateway certificate for the upstream hosts:
    ```bash
@@ -204,7 +204,7 @@ credential the CLI uses).
 2. Store it on the host:
    ```bash
    mkdir -p ~/.config/ai-sandbox
-   (umask 077; read -rs -p 'Token: ' t && printf '%s\n' "$t" > ~/.config/ai-sandbox/copilot-token)
+   (umask 077; printf 'Token: '; read -rs t && echo && printf '%s\n' "$t" > ~/.config/ai-sandbox/copilot-token)
    mkdir -p ~/.copilot-devcontainer
    ```
 3. Rebuild the container, then run `copilot`. It must start without asking

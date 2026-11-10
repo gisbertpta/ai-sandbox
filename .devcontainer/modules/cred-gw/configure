@@ -38,7 +38,7 @@ for svc in jira gitlab; do
   HOSTS+=("${BASH_REMATCH[1],,}")
   if [ ! -s "$TOKENS/$svc-token" ]; then
     err "$svc is configured, but $TOKENS/$svc-token is missing or empty."
-    echo "        (umask 077; read -rs -p 'Token: ' t && printf '%s\\n' \"\$t\" > $TOKENS/$svc-token)" >&2
+    echo "        (umask 077; printf 'Token: '; read -rs t && echo && printf '%s\\n' \"\$t\" > $TOKENS/$svc-token)" >&2
   fi
 done
 [ ${#HOSTS[@]} -gt 0 ] || err "no service configured in the project's cred-gw.env (set JIRA_GW_UPSTREAM and/or GITLAB_GW_UPSTREAM)."
